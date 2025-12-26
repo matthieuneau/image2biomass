@@ -1,8 +1,13 @@
 import glob
 import os
+from typing import Final
 
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import torch
 from PIL import Image
+from torch.utils.data import Dataset
 from torchvision import transforms
 
 
@@ -50,10 +55,6 @@ def preprocess_biomass_images(
             )
 
 
-import matplotlib.pyplot as plt
-import numpy as np
-
-
 def visualize_stacked_tensor(file_path):
     # 1. Load the tensor (shape: [2, 3, 224, 224])
     # map_location='cpu' ensures it works even if you don't have a GPU active
@@ -88,3 +89,37 @@ if __name__ == "__main__":
     preprocess_biomass_images()
     # To check preprocessing
     # visualize_stacked_tensor("./data/preprocessed/ID1011485656.pt")
+
+TARGET_COLS: Final[list[str]] = [
+    "Dry_Green_g",
+    "Dry_Dead_g",
+    "Dry_Clover_g",
+    "GDM_g",
+    "Dry_Total_g",
+]
+
+
+class BiomassDataset(Dataset):
+    def __init__(self, csv_path: str, img_dir: str, transform=None) -> None:
+        self.df: pd.DataFrame = pd.read_csv(csv_path)
+        self.img_dir: str = img_dir
+        self.transform = transform
+
+    def __len__(self) -> int:
+        return len(self.df)
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+        # 1. Load Image
+        img_name: str = self.df.iloc[idx]["image_id"] + ".jpg"
+        img_path: str = os.path.join(self.img_dir, img_name)
+        image: Image.Image = Image.open(img_path).convert("RGB")
+
+        if self.transform:
+            image_tensor: torch.Tensor = self.transform(image)
+
+        # 2. Extract Targets as a vector of 5 values
+        targets: torch.Tensor = torch.tensor(
+            self.df.iloc[idx][TARGET_COLS].values.astype("float32")
+        )
+
+        return image_tensor, targets

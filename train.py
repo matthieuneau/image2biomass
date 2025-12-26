@@ -2,7 +2,9 @@ import timm
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torchvision import datasets, transforms
+from torchvision import transforms
+
+from image_processing import BiomassDataset
 
 
 class ResNetModel(nn.Module):
@@ -15,15 +17,15 @@ class ResNetModel(nn.Module):
         self.regressor = nn.Sequential(
             nn.Linear(512, 128),
             nn.ReLU(),
-            nn.Linear(128, 1),
+            nn.Linear(128, 5),  # Predict 5 biomass targets
             nn.ReLU(),  # Add a final ReLU to ensure non-negative output
         )
 
     def forward(self, x):
         # x shape: [B, 3, 224, 224]
         features = self.backbone(x)  # Shape: [B, 512]
-        biomass = self.regressor(features)  # Shape: [B, 1]
-        return biomass.squeeze(1)  # Shape: [B]
+        biomass = self.regressor(features)  # Shape: [B, 5]
+        return biomass  # Shape: [B, 5]
 
 
 device = torch.device(
@@ -34,8 +36,9 @@ device = torch.device(
     else "cpu"
 )
 model = ResNetModel().to(device)
-criterion = nn.MSELoss()
+criterion = nn.MSELoss(reduction="none")  # Using 'none' to apply custom weights later
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+loss_weights = torch.tensor([0.1, 0.1, 0.1, 0.2, 0.5], device=device)
 
 transform = transforms.Compose(
     [
@@ -47,9 +50,10 @@ transform = transforms.Compose(
     ]
 )
 
-train_dataset = datasets.ImageFolder(root="./data/train", transform=transform)
+train_dataset = BiomassDataset(
+    csv_path="./data/y_train.csv", img_dir="./data/train", transform=transform
+)
 dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True)
-
 
 
 def train_one_epoch(dataloader, model, criterion, optimizer):
@@ -64,6 +68,9 @@ def train_one_epoch(dataloader, model, criterion, optimizer):
         # Forward pass
         preds = model(images)  # Output is [16]
         loss = criterion(preds, labels)
+        # Multiply each column by its specific weight
+        loss *= loss_weights
+        loss = loss.sum(dim=1).mean()  # Mean over batch
 
         # Backward pass
         optimizer.zero_grad()
