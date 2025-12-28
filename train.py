@@ -1,32 +1,20 @@
-import timm
 import torch
 import torch.nn as nn
+import wandb
+import yaml
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from image_processing import BiomassDataset
+from models import ResNetModel
 
+with open("config.yaml", "r") as f:
+    config = yaml.safe_load(f)
 
-class ResNetModel(nn.Module):
-    def __init__(self, model_name="resnet18.a1_in1k"):
-        super().__init__()
-        # 1. Feature Extractor (removes original ImageNet head)
-        self.backbone = timm.create_model(model_name, pretrained=True, num_classes=0)
-
-        # 2. Regression Head (processes the 512 features from ResNet18)
-        self.regressor = nn.Sequential(
-            nn.Linear(512, 128),
-            nn.ReLU(),
-            nn.Linear(128, 5),  # Predict 5 biomass targets
-            nn.ReLU(),  # Add a final ReLU to ensure non-negative output
-        )
-
-    def forward(self, x):
-        # x shape: [B, 3, 224, 224]
-        features = self.backbone(x)  # Shape: [B, 512]
-        biomass = self.regressor(features)  # Shape: [B, 5]
-        return biomass  # Shape: [B, 5]
-
+run = wandb.init(
+    project="image2biomass",
+    config=config,
+)
 
 device = torch.device(
     "cuda"
@@ -37,7 +25,7 @@ device = torch.device(
 )
 model = ResNetModel().to(device)
 criterion = nn.MSELoss(reduction="none")  # Using 'none' to apply custom weights later
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
 loss_weights = torch.tensor([0.1, 0.1, 0.1, 0.2, 0.5], device=device)
 
 transform = transforms.Compose(
