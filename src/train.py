@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
-import wandb
 import yaml
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
+import wandb
 from image_processing import BiomassDataset
 from models import ResNetModel
 
