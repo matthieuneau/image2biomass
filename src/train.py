@@ -67,11 +67,13 @@ def train_one_epoch(dataloader, model, criterion, optimizer):
 
         total_loss += loss.item()
 
+    wandb.log({"train_loss": total_loss / len(dataloader)})
+
     return total_loss / len(dataloader)
 
 
 if __name__ == "__main__":
-    num_epochs = 1
-    for epoch in range(num_epochs):
+    n_epochs = config.get("n_epochs", 10)
+    for epoch in range(n_epochs):
         avg_loss = train_one_epoch(dataloader, model, criterion, optimizer)
-        print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {avg_loss:.4f}")
+        print(f"Epoch [{epoch + 1}/{n_epochs}], Loss: {avg_loss:.4f}")

@@ -1,1 +1,2 @@
 lr: !!float 1e-4
+n_epochs: 10
