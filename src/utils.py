@@ -1,4 +1,6 @@
-from src.train import _standard_repr
+import torch
+
+_standard_repr = torch.Tensor.__repr__
 
 
 def enhanced_repr(self) -> str:

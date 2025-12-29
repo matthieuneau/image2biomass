@@ -2,14 +2,11 @@ import torch
 import torch.nn as nn
 import yaml
 from torch.utils.data import DataLoader, random_split
-from torchvision import transforms
 
 import wandb
 from image_processing import BiomassDataset
-from models import ResNetModel
+from models import ViTModel
 from utils import enhanced_repr
-
-_standard_repr = torch.Tensor.__repr__
 
 torch.Tensor.__repr__ = enhanced_repr
 
@@ -31,18 +28,11 @@ run = wandb.init(
     config=config,
 )
 
-model = ResNetModel().to(device)
+# model = ResNetModel().to(device)
+model = ViTModel().to(device)
 criterion = nn.MSELoss(reduction="none")  # Using 'none' to apply custom weights later
 optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
-transform = transforms.Compose(
-    [
-        transforms.Lambda(
-            lambda img: img.crop((500, 0, 1500, 1000))
-        ),  # Crop to center 1000x1000
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-    ]
-)
+transform = model.get_transforms()
 
 
 # Create a generator for deterministic shuffling
