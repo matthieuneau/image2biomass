@@ -1,2 +1,4 @@
 lr: !!float 1e-4
-n_epochs: 10
+n_epochs: 25
+train_split: 0.8
+batch_size: 16
