@@ -24,6 +24,17 @@ device = torch.device(
     if torch.backends.mps.is_available()
     else "cpu"
 )
+if config.get("bf16", False) and device.type in ["cuda", "mps"]:
+    amp_dtype = torch.bfloat16
+
+artifact = wandb.Artifact(
+    name="image2biomass_dataset",
+    type="dataset",
+    description="Contains all the content of my local ./data folder",
+)
+artifact.add_dir("./data")
+run.log_artifact(artifact)
+
 LOSS_WEIGHTS = torch.tensor([0.1, 0.1, 0.1, 0.2, 0.5], device=device)
 model = ViTModel().to(device)
 criterion = nn.MSELoss(reduction="none")
