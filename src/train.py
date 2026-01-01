@@ -9,12 +9,13 @@ from image_processing import BiomassDataset
 from models import ViTModel
 from utils import enhanced_repr
 
-# ... [Device and Repr setup remains the same] ...
 torch.Tensor.__repr__ = enhanced_repr
 
 # Load Config
 with open("config.yaml", "r") as f:
     config = yaml.safe_load(f)
+
+run = wandb.init(project="image2biomass", config=config)
 
 # Initialization
 device = torch.device(
@@ -40,6 +41,9 @@ model = ViTModel().to(device)
 criterion = nn.MSELoss(reduction="none")
 optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
 
+best_val_loss = float("inf")
+patience_counter = 0
+
 # Data Setup
 full_dataset = BiomassDataset(
     csv_path="./data/y_train.csv",
@@ -56,7 +60,6 @@ train_dataset, val_dataset = random_split(
 train_loader = DataLoader(train_dataset, batch_size=config["batch_size"], shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=config["batch_size"], shuffle=False)
 
-wandb.init(project="image2biomass", config=config)
 
 # --- MAIN TRAINING LOOP ---
 n_epochs = config.get("n_epochs", 10)
@@ -66,7 +69,6 @@ for epoch in range(n_epochs):
     model.train()
     train_running_loss = 0.0
 
-    # Progress bar for training
     train_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{n_epochs} [Train]")
     for images, labels in train_bar:
         images, labels = images.to(device), labels.to(device).float()
@@ -106,6 +108,18 @@ for epoch in range(n_epochs):
 
     # 3. METRICS CALCULATION
     avg_val_loss = val_running_loss / len(val_loader)
+
+    if avg_val_loss < best_val_loss:
+        best_val_loss = avg_val_loss
+        patience_counter = 0
+
+    else:
+        patience_counter += 1
+        if patience_counter >= config.get("patience", 5):
+            print(
+                f"Early stopping triggered after {patience_counter} epochs without improvement at epoch {epoch + 1}."
+            )
+            break
 
     # Concatenate all batches for a global R2
     y_true = torch.cat(all_labels)
