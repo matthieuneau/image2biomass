@@ -1,4 +1,8 @@
 lr: !!float 1e-4
-n_epochs: 40
+n_epochs: 1
 train_split: 0.8
-batch_size: 16
+batch_size: 1
+bf16: true
+patience: 5
+model_class: ViTModel
+model_name: vit_large_patch14_dinov2.lvd142m      # vit_tiny_patch16_224, 
