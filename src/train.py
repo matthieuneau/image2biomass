@@ -6,18 +6,15 @@ from tqdm import tqdm
 
 import wandb
 from image_processing import BiomassDataset
-from models import ViTModel
-from utils import enhanced_repr
+from utils import enhanced_repr, get_model
 
 torch.Tensor.__repr__ = enhanced_repr
 
-# Load Config
 with open("config.yaml", "r") as f:
     config = yaml.safe_load(f)
 
 run = wandb.init(project="image2biomass", config=config)
 
-# Initialization
 device = torch.device(
     "cuda"
     if torch.cuda.is_available()
@@ -37,7 +34,7 @@ artifact.add_dir("./data")
 run.log_artifact(artifact)
 
 LOSS_WEIGHTS = torch.tensor([0.1, 0.1, 0.1, 0.2, 0.5], device=device)
-model = ViTModel().to(device)
+model = get_model(config).to(device)
 criterion = nn.MSELoss(reduction="none")
 optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
 
@@ -142,5 +139,20 @@ for epoch in range(n_epochs):
             "val_R2": r2_score.item(),
         }
     )
+
+# Issue with python 3.14 and torch.jit.save so we use tracing here
+dummy_input = torch.randn(1, 3, 224, 224).to(device)
+traced_model = torch.jit.trace(model, dummy_input)
+model_path = f"./models/{config['model_name']}_{run.name}.pt"
+torch.jit.save(traced_model, model_path)
+
+model_artifact = wandb.Artifact(
+    name=f"{config['model_name']}",
+    type="model",
+    description="A first test on saving model to wandb",
+    metadata={**config, "best_val_loss": best_val_loss, "final_r2": r2_score.item()},
+)
+model_artifact.add_file(model_path)
+run.log_artifact(model_artifact)
 
 wandb.finish()
