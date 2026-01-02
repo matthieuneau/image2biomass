@@ -16,7 +16,9 @@ def enhanced_repr(self) -> str:
 
 
 def get_model(config: dict) -> torch.nn.Module:
-    return eval(config["model_class"])(model_name=config["model_name"])
+    return eval(config["model_class"])(
+        model_name=config["model_name"], last_layer_dim=config["last_layer_dim"]
+    )
 
 
 def upload_model_to_kaggle():

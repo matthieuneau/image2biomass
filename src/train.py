@@ -45,7 +45,7 @@ patience_counter = 0
 full_dataset = BiomassDataset(
     csv_path="./data/y_train.csv",
     img_dir="./data/train",
-    transform=model.get_transforms(),
+    transform=model.get_transforms(config["image_size"]),
 )
 train_size = int(0.8 * len(full_dataset))
 train_dataset, val_dataset = random_split(
@@ -141,7 +141,7 @@ for epoch in range(n_epochs):
     )
 
 # Issue with python 3.14 and torch.jit.save so we use tracing here
-dummy_input = torch.randn(1, 3, 224, 224).to(device)
+dummy_input = torch.randn(1, 3, config["image_size"], config["image_size"]).to(device)
 traced_model = torch.jit.trace(model, dummy_input)
 model_path = f"./models/{config['model_name']}_{run.name}.pt"
 torch.jit.save(traced_model, model_path)

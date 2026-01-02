@@ -6,3 +6,5 @@ bf16: true
 patience: 5
 model_class: ViTModel
 model_name: vit_large_patch14_dinov2.lvd142m      # vit_tiny_patch16_224, 
+last_layer_dim: 1024
+image_size: 518
