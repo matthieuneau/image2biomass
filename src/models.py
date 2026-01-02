@@ -39,15 +39,17 @@ class ResNetModel(nn.Module):
 
 
 class ViTModel(nn.Module):
-    def __init__(self, model_name="vit_tiny_patch16_224"):
+    def __init__(self, model_name="vit_large_patch14_dinov2.lvd142m"):
         super().__init__()
         # 1. Feature Extractor (removes original ImageNet head)
         self.backbone = timm.create_model(model_name, pretrained=True, num_classes=0)
 
         # 2. Regression Head (processes the 768 features from ViT Tiny)
         self.regressor = nn.Sequential(
-            nn.Linear(192, 128),
-            nn.ReLU(),
+            # nn.Linear(768, 128),  for base
+            # nn.Linear(192, 128),  for tiny
+            nn.Linear(1024, 128),  # for vit_large_patch14_dinov2.lvd142m
+            nn.LeakyReLU(),
             nn.Linear(128, 5),  # Predict 5 biomass targets
             nn.ReLU(),  # Add a final ReLU to ensure non-negative output
         )
@@ -58,7 +60,8 @@ class ViTModel(nn.Module):
         return transforms.Compose(
             [
                 transforms.Lambda(lambda img: img.crop((500, 0, 1500, 1000))),
-                transforms.Resize((224, 224)),  # TODO: Check impact of resizing
+                # transforms.Resize((224, 224)),  # TODO: Check impact of resizing.
+                transforms.Resize((518, 518)),  # for vit_large_patch14_dinov2.lvd142m
                 transforms.ToTensor(),
                 transforms.Normalize(
                     mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]
