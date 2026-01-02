@@ -14,3 +14,4 @@ wheels/
 .venv
 .env
 src/draft.py
+.DS_Store

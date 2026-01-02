@@ -1,3 +1,4 @@
+import kagglehub
 import torch
 
 from models import *
@@ -16,3 +17,19 @@ def enhanced_repr(self) -> str:
 
 def get_model(config: dict) -> torch.nn.Module:
     return eval(config["model_class"])(model_name=config["model_name"])
+
+
+def upload_model_to_kaggle():
+    LOCAL_MODEL_DIR = "./models"
+
+    MODEL_SLUG = "vit-tiny-patch16-224-splendid-galaxy-22"
+
+    # Learn more about naming model variations at
+    # https://www.kaggle.com/docs/models#name-model.
+    VARIATION_SLUG = "default"
+
+    kagglehub.model_upload(
+        handle=f"matthieuneau/{MODEL_SLUG}/pyTorch/{VARIATION_SLUG}",
+        local_model_dir=LOCAL_MODEL_DIR,
+        version_notes="Update 2026-01-01",
+    )
