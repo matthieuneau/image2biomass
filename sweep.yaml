@@ -1,0 +1,54 @@
+program: train.py
+method: bayes   # random, grid
+metric:
+  name: val_loss
+  goal: minimize
+
+# Control how the sweep terminates poor-performing runs early
+early_terminate:
+  type: hyperband
+  min_iter: 5    # Minimum epochs before a run can be killed
+  eta: 2         # Bracket multiplier
+
+parameters:
+  lr:
+    distribution: log_uniform_values
+    min: 0.00001
+    max: 0.001
+  
+  optimizer:
+    values: ["adam", "adamw"]
+
+  weight_decay:
+    distribution: uniform
+    min: 0.0
+    max: 0.1
+
+  batch_size:
+    values: [8, 16, 32, 64]
+
+  # --- Model Architecture ---
+  model_class:
+    values:
+      - "ViTModel"
+      - "ResNetModel"
+
+  model_name:
+    values: 
+      - "vit_tiny_patch16_224"
+      # - "vit_large_patch14_dinov2.lvd142m"
+
+  last_layer_dim:
+    value: 192
+
+  image_size:
+    value: 224
+
+  n_epochs:
+    values: [1,2]
+
+  patience:
+    values: [5,6]
+
+  bf16:
+    values: [true, false]
