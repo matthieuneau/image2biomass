@@ -4,7 +4,7 @@ train_split: 0.1
 batch_size: 16
 bf16: true
 patience: 5
-model_class: ViTModel
+model_class: UnifiedModel
 model_name: vit_tiny_patch16_224      # vit_tiny_patch16_224, vit_large_patch14_dinov2.lvd142m
 last_layer_dim: 192      # 1024 for vit_large_patch14_dinov2.lvd142m, 192 for vit_tiny_patch16_224, 768 for vit_small_patch16_224
 image_size: 224

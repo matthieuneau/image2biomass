@@ -1,6 +1,8 @@
 git clone https://github.com/matthieuneau/image2biomass.git
 
 cd image2biomass
+mkdir models
+mkdir data
 
 uv sync
 
