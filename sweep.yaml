@@ -1,5 +1,5 @@
 program: train.py
-method: bayes   # random, grid
+method: bayes   # random, grid, or bayes
 metric:
   name: val_loss
   goal: minimize
@@ -11,44 +11,77 @@ early_terminate:
   eta: 2         # Bracket multiplier
 
 parameters:
+  # --- Training Hyperparameters ---
   lr:
-    distribution: log_uniform_values
-    min: 0.00001
-    max: 0.001
-  
+    value: 0.0001
+    # distribution: log_uniform_values
+    # min: 0.00001
+    # max: 0.001
+
   optimizer:
-    values: ["adam", "adamw"]
+    value: "adam"
+    # values: ["adam", "adamw"]
 
   weight_decay:
-    distribution: uniform
-    min: 0.0
-    max: 0.1
+    value: 0.05
+    # distribution: uniform
+    # min: 0.0
+    # max: 0.1
 
   batch_size:
-    values: [8, 16, 32, 64]
+    value: 32
+    # values: [8, 16, 32, 64]
 
   # --- Model Architecture ---
   model_class:
-    values:
-      - "ViTModel"
-      - "ResNetModel"
+    value: "UnifiedModel"  # Use the new unified model class
 
+  # Model backbone selection - utils.py will automatically set last_layer_dim and image_size
   model_name:
-    values: 
+    values:
+      # ConvNeXt models (8.53M - 27.82M params)
+      - "convnext_tiny.fb_in22k"
+      - "convnext_nano.d1h_in1k"
+      - "convnext_pico.d1_in1k"
+
+      # Swin Transformer models (~27.5M params)
+      - "swin_tiny_patch4_window7_224"
+      - "swin_s3_tiny_224"
+
+      # DINOv2 model (22.06M params, 518x518 input)
+      - "vit_small_patch14_dinov2.lvd142m"
+
+      # Vanilla ViT models (5.52M - 22.49M params)
       - "vit_tiny_patch16_224"
-      # - "vit_large_patch14_dinov2.lvd142m"
+      - "vit_small_patch16_224"
+      - "vit_small_patch32_224"
 
-  last_layer_dim:
-    value: 192
+      # ResNet models (11.18M - 23.51M params)
+      - "resnet18"
+      - "resnet34"
+      - "resnet50"
 
-  image_size:
-    value: 224
+      # EfficientNet models (4.01M - 7.70M params)
+      - "efficientnet_b0"
+      - "efficientnet_b1"
+      - "efficientnet_b2"
 
+      # MobileNet model (4.20M params)
+      - "mobilenetv3_large_100"
+
+      # RegNet models (8.28M - 14.29M params)
+      - "regnetx_016"
+      - "regnetx_032"
+
+  # --- Training Configuration ---
   n_epochs:
-    values: [1,2]
+    value: 40
 
   patience:
-    values: [5,6]
+    value: 5
 
   bf16:
-    values: [true, false]
+    value: true
+
+# Optional: Limit the number of runs
+# run_cap: 100  # Maximum number of runs
