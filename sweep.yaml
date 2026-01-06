@@ -12,43 +12,52 @@ early_terminate:
 
 parameters:
   lr:
-    distribution: log_uniform_values
-    min: 0.00001
-    max: 0.001
+    value: 0.0001
+    # distribution: log_uniform_values
+    # min: 0.00001
+    # max: 0.001
   
   optimizer:
-    values: ["adam", "adamw"]
+    # values: ["adam", "adamw"]
+    value: "adamw"
 
   weight_decay:
-    distribution: uniform
-    min: 0.0
-    max: 0.1
+    value: 0.05
+    # distribution: uniform
+    # min: 0.0
+    # max: 0.1
 
   batch_size:
-    values: [8, 16, 32, 64]
+    # values: [8, 16, 32, 64]
+    value: 32
 
   # --- Model Architecture ---
   model_class:
     values:
       - "ViTModel"
-      - "ResNetModel"
+      # - "ResNetModel"
 
   model_name:
     values: 
-      - "vit_tiny_patch16_224"
+      # - "vit_tiny_patch16_224"
+      # - "vit_tiny_patch16_384"
       # - "vit_large_patch14_dinov2.lvd142m"
 
   last_layer_dim:
     value: 192
 
-  image_size:
-    value: 224
+  # image_size:
+  #   # value: 224
+  #   values: [224, 356, 384, 416]
 
   n_epochs:
-    values: [1,2]
+    # values: [1,2]
+    value: 40
 
   patience:
-    values: [5,6]
+    # values: [5,6]
+    value: 5
 
   bf16:
-    values: [true, false]
+    # values: [true, false]
+    value: true

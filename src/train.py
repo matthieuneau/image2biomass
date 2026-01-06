@@ -34,6 +34,8 @@ def train(config=None):
         # Access the resolved config (merges yaml defaults with sweep overrides)
         config = wandb.config
 
+        image_size = config["model_name"].split("_")[-1]
+
         device = torch.device(
             "cuda"
             if torch.cuda.is_available()
@@ -56,7 +58,7 @@ def train(config=None):
         full_dataset = BiomassDataset(
             csv_path="./data/y_train.csv",
             img_dir="./data/train",
-            transform=model.get_transforms(config["image_size"]),
+            transform=model.get_transforms(int(image_size)),
         )
         train_size = int(0.8 * len(full_dataset))
         train_dataset, val_dataset = random_split(
@@ -127,9 +129,9 @@ def train(config=None):
                 patience_counter = 0
 
                 # Tracing and saving locally
-                dummy_input = torch.randn(
-                    1, 3, config["image_size"], config["image_size"]
-                ).to(device)
+                dummy_input = torch.randn(1, 3, int(image_size), int(image_size)).to(
+                    device
+                )
                 traced_model = torch.jit.trace(model, dummy_input)
                 model_path = f"models/model_{wandb.run.id}.pt"
                 torch.jit.save(traced_model, model_path)
