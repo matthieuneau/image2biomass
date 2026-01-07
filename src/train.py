@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 import wandb
 from image_processing import BiomassDataset
-from utils import enhanced_repr, get_model, MODEL_CONFIGS
+from utils import MODEL_CONFIGS, enhanced_repr, get_model
 
 torch.Tensor.__repr__ = enhanced_repr
 
@@ -137,9 +137,7 @@ def train(config=None):
                 patience_counter = 0
 
                 # Tracing and saving locally
-                dummy_input = torch.randn(
-                    1, 3, image_size, image_size
-                ).to(device)
+                dummy_input = torch.randn(1, 3, image_size, image_size).to(device)
                 traced_model = torch.jit.trace(model, dummy_input)
                 model_path = f"models/model_{wandb.run.id}.pt"
                 torch.jit.save(traced_model, model_path)
@@ -161,13 +159,20 @@ def train(config=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--sweep", action="store_true", help="Run in W&B Sweep mode")
+    parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging")
     args = parser.parse_args()
+
+    if args.no_wandb:
+        import os
+
+        os.environ["WANDB_MODE"] = "disabled"
 
     with open("config.yaml", "r") as f:
         base_config = yaml.safe_load(f)
 
-    # 1. Log dataset artifact ONCE before training starts
-    log_dataset_artifact(base_config)
+    # 1. Log dataset artifact ONCE before training starts (skip if wandb disabled)
+    if not args.no_wandb:
+        log_dataset_artifact(base_config)
 
     # 2. Start training or sweep
     if args.sweep:
