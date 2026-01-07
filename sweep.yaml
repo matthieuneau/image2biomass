@@ -29,8 +29,8 @@ parameters:
     # max: 0.1
 
   batch_size:
-    value: 32
-    # values: [8, 16, 32, 64]
+    value: 16
+    # values: [16, 32]
 
   # --- Model Architecture ---
   model_class:
@@ -82,6 +82,15 @@ parameters:
 
   bf16:
     value: true
+
+  # --- DataLoader Configuration ---
+  num_workers:
+    value: 4
+    # values: [0, 2, 4, 8]
+
+  prefetch_factor:
+    value: 2
+    # values: [2, 4]
 
 # Optional: Limit the number of runs
 # run_cap: 100  # Maximum number of runs

@@ -75,11 +75,26 @@ def train(config=None):
             generator=torch.Generator().manual_seed(42),
         )
 
+        num_workers = config.get("num_workers", 4)
+        prefetch_factor = config.get("prefetch_factor", 2) if num_workers > 0 else None
+
         train_loader = DataLoader(
-            train_dataset, batch_size=config["batch_size"], shuffle=True, num_workers=4
+            train_dataset,
+            batch_size=config["batch_size"],
+            shuffle=True,
+            num_workers=num_workers,
+            prefetch_factor=prefetch_factor,
+            pin_memory=(device.type == "cuda"),
+            persistent_workers=(num_workers > 0),
         )
         val_loader = DataLoader(
-            val_dataset, batch_size=config["batch_size"], shuffle=False, num_workers=4
+            val_dataset,
+            batch_size=config["batch_size"],
+            shuffle=False,
+            num_workers=num_workers,
+            prefetch_factor=prefetch_factor,
+            pin_memory=(device.type == "cuda"),
+            persistent_workers=(num_workers > 0),
         )
 
         best_val_loss = float("inf")

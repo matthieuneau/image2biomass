@@ -1,3 +1,5 @@
+echo "cd /workspace/image2biomass && source .venv/bin/activate" >> ~/.bashrc
+
 git clone https://github.com/matthieuneau/image2biomass.git
 
 cd image2biomass
