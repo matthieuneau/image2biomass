@@ -9,6 +9,7 @@ wheels/
 /data
 /wandb
 /models
+/.claude
 
 # Virtual environments
 .venv
