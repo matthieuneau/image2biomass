@@ -7,6 +7,8 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from tqdm import tqdm
 
+from models import CenterCrop
+
 MODEL_PATH = "/kaggle/input/vit-tiny-patch16-224-untrained/vit_tiny_patch16_224_splendid-galaxy-22.pt"
 
 
@@ -51,7 +53,7 @@ dataset = SubmissionDataset(
     img_dir="/kaggle/input/csiro-biomass/test",
     transform=transforms.Compose(  # TODO: verify that these transforms match training
         [
-            transforms.Lambda(lambda img: img.crop((500, 0, 1500, 1000))),
+            CenterCrop(500, 1500),
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
             transforms.Normalize(

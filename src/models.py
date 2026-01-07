@@ -3,6 +3,16 @@ import torch.nn as nn
 from torchvision import transforms
 
 
+class CenterCrop:
+    """Picklable center crop transform for multiprocessing DataLoader."""
+    def __init__(self, left: int = 500, right: int = 1500):
+        self.left = left
+        self.right = right
+
+    def __call__(self, img):
+        return img.crop((self.left, 0, self.right, img.height))
+
+
 class UnifiedModel(nn.Module):
     """Unified model class that can work with any timm backbone"""
 
@@ -41,7 +51,7 @@ class UnifiedModel(nn.Module):
             std = [0.229, 0.224, 0.225]
 
         return transforms.Compose([
-            transforms.Lambda(lambda img: img.crop((500, 0, 1500, 1000))),
+            CenterCrop(500, 1500),
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(),
             transforms.Normalize(mean=mean, std=std),

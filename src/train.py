@@ -76,10 +76,10 @@ def train(config=None):
         )
 
         train_loader = DataLoader(
-            train_dataset, batch_size=config["batch_size"], shuffle=True
+            train_dataset, batch_size=config["batch_size"], shuffle=True, num_workers=4
         )
         val_loader = DataLoader(
-            val_dataset, batch_size=config["batch_size"], shuffle=False
+            val_dataset, batch_size=config["batch_size"], shuffle=False, num_workers=4
         )
 
         best_val_loss = float("inf")
