@@ -1,6 +1,8 @@
 import timm
+import torch
 import torch.nn as nn
 from torchvision import transforms
+from torchvision.transforms import v2
 
 
 class CenterCrop:
@@ -60,6 +62,52 @@ class UnifiedModel(nn.Module):
     def get_transforms(self, image_size: int):
         """Instance method that calls the static method"""
         return UnifiedModel.get_transforms_static(self.model_name, image_size)
+
+    @staticmethod
+    def get_train_transforms_static(model_name: str, image_size: int):
+        """Returns training transforms with data augmentation (2025 standard approach).
+
+        Uses torchvision.transforms.v2 with:
+        - RandomResizedCrop: Varies scale and aspect ratio
+        - RandomHorizontalFlip: Natural for top-down pasture views
+        - ColorJitter: Handles varied outdoor lighting conditions
+        - TrivialAugmentWide: Automatic augmentation policy (simpler than RandAugment)
+        """
+        # Determine normalization based on model type
+        if 'dinov2' in model_name.lower():
+            mean = [0.485, 0.456, 0.406]
+            std = [0.229, 0.224, 0.225]
+        elif 'vit' in model_name.lower() and 'dinov2' not in model_name.lower():
+            mean = [0.5, 0.5, 0.5]
+            std = [0.5, 0.5, 0.5]
+        else:
+            mean = [0.485, 0.456, 0.406]
+            std = [0.229, 0.224, 0.225]
+
+        return v2.Compose([
+            CenterCrop(500, 1500),  # Extract center region first
+            v2.RandomResizedCrop(
+                size=(image_size, image_size),
+                scale=(0.8, 1.0),      # Crop 80-100% of the image
+                ratio=(0.9, 1.1),      # Near-square aspect ratio
+                antialias=True,
+            ),
+            v2.RandomHorizontalFlip(p=0.5),
+            v2.ColorJitter(
+                brightness=0.2,
+                contrast=0.2,
+                saturation=0.2,
+                hue=0.05,
+            ),
+            v2.TrivialAugmentWide(),  # Automatic augmentation policy
+            v2.ToImage(),
+            v2.ToDtype(dtype=torch.float32, scale=True),
+            v2.Normalize(mean=mean, std=std),
+        ])
+
+    def get_train_transforms(self, image_size: int):
+        """Instance method for training transforms with augmentation"""
+        return UnifiedModel.get_train_transforms_static(self.model_name, image_size)
 
     def forward(self, x):
         features = self.backbone(x)

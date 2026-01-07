@@ -1,5 +1,5 @@
 lr: !!float 1e-4
-n_epochs: 1
+n_epochs: 3
 train_split: 0.8
 batch_size: 32
 bf16: true
@@ -7,6 +7,7 @@ patience: 5
 num_workers: 4          # DataLoader workers (0 for single-threaded)
 prefetch_factor: 2      # Batches to prefetch per worker
 model_class: UnifiedModel
-model_name: vit_tiny_patch16_224      # vit_tiny_patch16_224, vit_large_patch14_dinov2.lvd142m
+model_name: resnet18      # vit_tiny_patch16_224, vit_large_patch14_dinov2.lvd142m
 last_layer_dim: 192      # 1024 for vit_large_patch14_dinov2.lvd142m, 192 for vit_tiny_patch16_224, 768 for vit_small_patch16_224
 image_size: 224
+augment: true          # Enable data augmentation (RandomResizedCrop, ColorJitter, TrivialAugmentWide)
