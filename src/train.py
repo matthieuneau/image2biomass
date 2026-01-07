@@ -1,31 +1,33 @@
 import argparse
+import os
+import time
 
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import yaml
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
 import wandb
-from image_processing import BiomassDataset
-from utils import MODEL_CONFIGS, enhanced_repr, get_model
+from image_processing import BiomassDataset, TARGET_COLS
+from utils import (
+    MODEL_CONFIGS,
+    compute_per_target_loss,
+    compute_per_target_r2,
+    compute_residual_stats,
+    create_per_target_loss_plot,
+    create_per_target_r2_plot,
+    create_residual_stats_plot,
+    create_scatter_plot,
+    enhanced_repr,
+    get_gradient_norm,
+    get_model,
+    log_dataset_artifact,
+    log_hard_examples,
+)
 
 torch.Tensor.__repr__ = enhanced_repr
-
-
-def log_dataset_artifact(config):
-    """Initializes a brief run to log the dataset artifact once."""
-    with wandb.init(
-        project="image2biomass", job_type="dataset-upload", config=config
-    ) as run:
-        artifact = wandb.Artifact(
-            name="image2biomass_dataset",
-            type="dataset",
-            description="Contains all the content of my local ./data folder",
-        )
-        artifact.add_dir("./data")
-        run.log_artifact(artifact)
-        print("✅ Dataset artifact logged successfully.")
 
 
 def train(config=None):
@@ -62,18 +64,45 @@ def train(config=None):
         criterion = nn.MSELoss(reduction="none")
         optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
 
-        # Data Setup
+        # Data Setup - separate transforms for train (with optional augmentation) and val
+        use_augmentation = config.get("augment", False)
+
+        # Get transforms: augmented for training (if enabled), base for validation
+        if use_augmentation:
+            train_transform = model.get_train_transforms(image_size)
+        else:
+            train_transform = model.get_transforms(image_size)
+        val_transform = model.get_transforms(image_size)
+
+        # Create base dataset to get indices for split
         full_dataset = BiomassDataset(
             csv_path="./data/y_train.csv",
             img_dir="./data/train",
-            transform=model.get_transforms(image_size),
+            transform=val_transform,  # Used for hard examples logging
         )
         train_size = int(0.8 * len(full_dataset))
-        train_dataset, val_dataset = random_split(
-            full_dataset,
-            [train_size, len(full_dataset) - train_size],
-            generator=torch.Generator().manual_seed(42),
+
+        # Get train/val indices with fixed seed for reproducibility
+        generator = torch.Generator().manual_seed(42)
+        indices = torch.randperm(len(full_dataset), generator=generator).tolist()
+        train_indices = indices[:train_size]
+        val_indices_list = indices[train_size:]
+
+        # Create separate datasets with appropriate transforms
+        train_dataset_full = BiomassDataset(
+            csv_path="./data/y_train.csv",
+            img_dir="./data/train",
+            transform=train_transform,
         )
+        val_dataset_full = BiomassDataset(
+            csv_path="./data/y_train.csv",
+            img_dir="./data/train",
+            transform=val_transform,
+        )
+
+        # Use Subset to apply the split indices
+        train_dataset = Subset(train_dataset_full, train_indices)
+        val_dataset = Subset(val_dataset_full, val_indices_list)
 
         num_workers = config.get("num_workers", 4)
         prefetch_factor = config.get("prefetch_factor", 2) if num_workers > 0 else None
@@ -104,8 +133,13 @@ def train(config=None):
         for epoch in range(n_epochs):
             model.train()
             train_running_loss = 0.0
+            epoch_start_time = time.time()
+            total_samples = 0
+            gradient_norms = []
+
             for images, labels in tqdm(train_loader, desc=f"Epoch {epoch + 1} [Train]"):
                 images, labels = images.to(device), labels.to(device).float()
+                total_samples += images.size(0)
 
                 # Simple implementation - add autocast here if using amp_dtype
                 preds = model(images)
@@ -113,8 +147,17 @@ def train(config=None):
 
                 optimizer.zero_grad()
                 loss.backward()
+
+                # Collect gradient norm before optimizer step
+                gradient_norms.append(get_gradient_norm(model))
+
                 optimizer.step()
                 train_running_loss += loss.item()
+
+            epoch_time = time.time() - epoch_start_time
+            samples_per_second = total_samples / epoch_time
+            avg_gradient_norm = sum(gradient_norms) / len(gradient_norms)
+            max_gradient_norm = max(gradient_norms)
 
             # Validation
             model.eval()
@@ -138,13 +181,59 @@ def train(config=None):
             ss_tot = (LOSS_WEIGHTS.cpu() * (y_true - y_mean) ** 2).sum()
             r2_score = 1 - (ss_res / ss_tot)
 
-            wandb.log(
-                {
-                    "train_loss": train_running_loss / len(train_loader),
-                    "val_loss": avg_val_loss,
-                    "val_R2": r2_score.item(),
-                }
+            # Compute per-target metrics
+            per_target_r2 = compute_per_target_r2(y_true, y_pred, TARGET_COLS)
+            per_target_loss = compute_per_target_loss(y_true, y_pred, criterion, TARGET_COLS)
+            residual_stats = compute_residual_stats(y_true, y_pred, TARGET_COLS)
+
+            # Build comprehensive log dict
+            log_dict = {
+                # Original metrics
+                "train_loss": train_running_loss / len(train_loader),
+                "val_loss": avg_val_loss,
+                "val_R2": r2_score.item(),
+                # Throughput metrics
+                "epoch_time_seconds": epoch_time,
+                "samples_per_second": samples_per_second,
+                # Gradient norms
+                "gradient_norm_avg": avg_gradient_norm,
+                "gradient_norm_max": max_gradient_norm,
+                # Per-target metrics
+                **per_target_r2,
+                **per_target_loss,
+                **residual_stats,
+            }
+
+            # Log combined plots every 5 epochs + final epoch
+            is_final_epoch = (epoch == n_epochs - 1) or (
+                patience_counter >= config.get("patience", 5) - 1
             )
+            if (epoch + 1) % 5 == 0 or is_final_epoch:
+                y_true_np = y_true.numpy()
+                y_pred_np = y_pred.numpy()
+
+                # Scatter plots for each target
+                for i, name in enumerate(TARGET_COLS):
+                    fig = create_scatter_plot(y_true_np[:, i], y_pred_np[:, i], name)
+                    log_dict[f"scatter_{name}"] = wandb.Image(fig)
+                    plt.close(fig)
+
+                # Combined per-target loss plot
+                fig_loss = create_per_target_loss_plot(per_target_loss, TARGET_COLS)
+                log_dict["per_target_loss_plot"] = wandb.Image(fig_loss)
+                plt.close(fig_loss)
+
+                # Combined per-target R2 plot
+                fig_r2 = create_per_target_r2_plot(per_target_r2, TARGET_COLS)
+                log_dict["per_target_r2_plot"] = wandb.Image(fig_r2)
+                plt.close(fig_r2)
+
+                # Combined residual stats plot
+                fig_residuals = create_residual_stats_plot(residual_stats, TARGET_COLS)
+                log_dict["residual_stats_plot"] = wandb.Image(fig_residuals)
+                plt.close(fig_residuals)
+
+            wandb.log(log_dict)
 
             # Early Stopping & Model Saving (Tracing for Python 3.14 compatibility)
             if avg_val_loss < best_val_loss:
@@ -160,6 +249,12 @@ def train(config=None):
                 patience_counter += 1
                 if patience_counter >= config.get("patience", 5):
                     break
+
+        # Log hard examples only once at the end of training
+        hard_examples_table = log_hard_examples(
+            full_dataset, val_indices_list, y_true, y_pred, TARGET_COLS, n_examples=10
+        )
+        wandb.log({"hard_examples": hard_examples_table})
 
         # Log Model Artifact at the end of the run
         model_artifact = wandb.Artifact(
@@ -178,8 +273,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.no_wandb:
-        import os
-
         os.environ["WANDB_MODE"] = "disabled"
 
     with open("config.yaml", "r") as f:
