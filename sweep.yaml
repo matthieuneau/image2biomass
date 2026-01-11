@@ -52,12 +52,12 @@ parameters:
       # - "vit_small_patch14_dinov2.lvd142m"
 
       # # Vanilla ViT models (5.52M - 22.49M params)
-      # - "vit_tiny_patch16_224"
+      - "vit_tiny_patch16_224"
       # - "vit_small_patch16_224"
       # - "vit_small_patch32_224"
 
       # # ResNet models (11.18M - 23.51M params)
-      # - "resnet18"
+      - "resnet18"
       # - "resnet34"
       # - "resnet50"
 

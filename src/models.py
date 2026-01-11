@@ -15,6 +15,24 @@ class CenterCrop:
         return img.crop((self.left, 0, self.right, img.height))
 
 
+class RandomCrop:
+    """Picklable random crop transform that takes a random horizontal slice.
+
+    Similar to CenterCrop but the crop position is randomized.
+    Default crop width is 1000px (same as CenterCrop: 1500-500).
+    """
+    def __init__(self, crop_width: int = 1000):
+        self.crop_width = crop_width
+
+    def __call__(self, img):
+        max_left = img.width - self.crop_width
+        if max_left <= 0:
+            return img  # Image is smaller than crop width, return as-is
+        left = torch.randint(0, max_left + 1, (1,)).item()
+        right = left + self.crop_width
+        return img.crop((left, 0, right, img.height))
+
+
 class UnifiedModel(nn.Module):
     """Unified model class that can work with any timm backbone"""
 
@@ -35,9 +53,14 @@ class UnifiedModel(nn.Module):
         )
 
     @staticmethod
-    def get_transforms_static(model_name: str, image_size: int):
-        """Returns the appropriate transforms based on model architecture"""
+    def get_transforms_static(model_name: str, image_size: int, crop_type: str = "center"):
+        """Returns the appropriate transforms based on model architecture.
 
+        Args:
+            model_name: Name of the model (for normalization selection)
+            image_size: Target image size after resize
+            crop_type: "center" for CenterCrop, "random" for RandomCrop
+        """
         # Determine normalization based on model type
         if 'dinov2' in model_name.lower():
             # DINOv2 models use ImageNet normalization
@@ -52,19 +75,22 @@ class UnifiedModel(nn.Module):
             mean = [0.485, 0.456, 0.406]
             std = [0.229, 0.224, 0.225]
 
+        # Select crop transform based on crop_type
+        crop_transform = RandomCrop(1000) if crop_type == "random" else CenterCrop(500, 1500)
+
         return transforms.Compose([
-            CenterCrop(500, 1500),
+            crop_transform,
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(),
             transforms.Normalize(mean=mean, std=std),
         ])
 
-    def get_transforms(self, image_size: int):
+    def get_transforms(self, image_size: int, crop_type: str = "center"):
         """Instance method that calls the static method"""
-        return UnifiedModel.get_transforms_static(self.model_name, image_size)
+        return UnifiedModel.get_transforms_static(self.model_name, image_size, crop_type)
 
     @staticmethod
-    def get_train_transforms_static(model_name: str, image_size: int):
+    def get_train_transforms_static(model_name: str, image_size: int, crop_type: str = "center"):
         """Returns training transforms with data augmentation (2025 standard approach).
 
         Uses torchvision.transforms.v2 with:
@@ -72,6 +98,11 @@ class UnifiedModel(nn.Module):
         - RandomHorizontalFlip: Natural for top-down pasture views
         - ColorJitter: Handles varied outdoor lighting conditions
         - TrivialAugmentWide: Automatic augmentation policy (simpler than RandAugment)
+
+        Args:
+            model_name: Name of the model (for normalization selection)
+            image_size: Target image size after resize
+            crop_type: "center" for CenterCrop, "random" for RandomCrop
         """
         # Determine normalization based on model type
         if 'dinov2' in model_name.lower():
@@ -84,8 +115,11 @@ class UnifiedModel(nn.Module):
             mean = [0.485, 0.456, 0.406]
             std = [0.229, 0.224, 0.225]
 
+        # Select crop transform based on crop_type
+        crop_transform = RandomCrop(1000) if crop_type == "random" else CenterCrop(500, 1500)
+
         return v2.Compose([
-            CenterCrop(500, 1500),  # Extract center region first
+            crop_transform,
             v2.RandomResizedCrop(
                 size=(image_size, image_size),
                 scale=(0.8, 1.0),      # Crop 80-100% of the image
@@ -105,9 +139,9 @@ class UnifiedModel(nn.Module):
             v2.Normalize(mean=mean, std=std),
         ])
 
-    def get_train_transforms(self, image_size: int):
+    def get_train_transforms(self, image_size: int, crop_type: str = "center"):
         """Instance method for training transforms with augmentation"""
-        return UnifiedModel.get_train_transforms_static(self.model_name, image_size)
+        return UnifiedModel.get_train_transforms_static(self.model_name, image_size, crop_type)
 
     def forward(self, x):
         features = self.backbone(x)
