@@ -7,12 +7,13 @@ from torchvision.transforms import v2
 
 class CenterCrop:
     """Picklable center crop transform for multiprocessing DataLoader."""
-    def __init__(self, left: int = 500, right: int = 1500):
-        self.left = left
-        self.right = right
+    def __init__(self, crop_width: int = 1000):
+        self.crop_width = crop_width
 
     def __call__(self, img):
-        return img.crop((self.left, 0, self.right, img.height))
+        left = (img.width - self.crop_width) // 2
+        right = left + self.crop_width
+        return img.crop((left, 0, right, img.height))
 
 
 class RandomCrop:
@@ -53,13 +54,14 @@ class UnifiedModel(nn.Module):
         )
 
     @staticmethod
-    def get_transforms_static(model_name: str, image_size: int, crop_type: str = "center"):
+    def get_transforms_static(model_name: str, image_size: int, crop_type: str = "center", crop_width: int = 1000):
         """Returns the appropriate transforms based on model architecture.
 
         Args:
             model_name: Name of the model (for normalization selection)
             image_size: Target image size after resize
             crop_type: "center" for CenterCrop, "random" for RandomCrop
+            crop_width: Width of the crop in pixels (default 1000)
         """
         # Determine normalization based on model type
         if 'dinov2' in model_name.lower():
@@ -76,7 +78,7 @@ class UnifiedModel(nn.Module):
             std = [0.229, 0.224, 0.225]
 
         # Select crop transform based on crop_type
-        crop_transform = RandomCrop(1000) if crop_type == "random" else CenterCrop(500, 1500)
+        crop_transform = RandomCrop(crop_width) if crop_type == "random" else CenterCrop(crop_width)
 
         return transforms.Compose([
             crop_transform,
@@ -85,12 +87,12 @@ class UnifiedModel(nn.Module):
             transforms.Normalize(mean=mean, std=std),
         ])
 
-    def get_transforms(self, image_size: int, crop_type: str = "center"):
+    def get_transforms(self, image_size: int, crop_type: str = "center", crop_width: int = 1000):
         """Instance method that calls the static method"""
-        return UnifiedModel.get_transforms_static(self.model_name, image_size, crop_type)
+        return UnifiedModel.get_transforms_static(self.model_name, image_size, crop_type, crop_width)
 
     @staticmethod
-    def get_train_transforms_static(model_name: str, image_size: int, crop_type: str = "center"):
+    def get_train_transforms_static(model_name: str, image_size: int, crop_type: str = "center", crop_width: int = 1000):
         """Returns training transforms with data augmentation (2025 standard approach).
 
         Uses torchvision.transforms.v2 with:
@@ -103,6 +105,7 @@ class UnifiedModel(nn.Module):
             model_name: Name of the model (for normalization selection)
             image_size: Target image size after resize
             crop_type: "center" for CenterCrop, "random" for RandomCrop
+            crop_width: Width of the crop in pixels (default 1000)
         """
         # Determine normalization based on model type
         if 'dinov2' in model_name.lower():
@@ -116,7 +119,7 @@ class UnifiedModel(nn.Module):
             std = [0.229, 0.224, 0.225]
 
         # Select crop transform based on crop_type
-        crop_transform = RandomCrop(1000) if crop_type == "random" else CenterCrop(500, 1500)
+        crop_transform = RandomCrop(crop_width) if crop_type == "random" else CenterCrop(crop_width)
 
         return v2.Compose([
             crop_transform,
@@ -139,9 +142,9 @@ class UnifiedModel(nn.Module):
             v2.Normalize(mean=mean, std=std),
         ])
 
-    def get_train_transforms(self, image_size: int, crop_type: str = "center"):
+    def get_train_transforms(self, image_size: int, crop_type: str = "center", crop_width: int = 1000):
         """Instance method for training transforms with augmentation"""
-        return UnifiedModel.get_train_transforms_static(self.model_name, image_size, crop_type)
+        return UnifiedModel.get_train_transforms_static(self.model_name, image_size, crop_type, crop_width)
 
     def forward(self, x):
         features = self.backbone(x)

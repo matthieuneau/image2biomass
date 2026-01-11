@@ -67,13 +67,14 @@ def train(config=None):
         # Data Setup - separate transforms for train (with optional augmentation) and val
         use_augmentation = config.get("augment", False)
         crop_type = config.get("crop_type", "center")  # "center" or "random"
+        crop_width = config.get("crop_width", 1000)  # Width of crop in pixels
 
         # Get transforms: augmented for training (if enabled), base for validation
         if use_augmentation:
-            train_transform = model.get_train_transforms(image_size, crop_type)
+            train_transform = model.get_train_transforms(image_size, crop_type, crop_width)
         else:
-            train_transform = model.get_transforms(image_size, crop_type)
-        val_transform = model.get_transforms(image_size, crop_type)
+            train_transform = model.get_transforms(image_size, crop_type, crop_width)
+        val_transform = model.get_transforms(image_size, crop_type, crop_width)
 
         # Create base dataset to get indices for split
         full_dataset = BiomassDataset(
