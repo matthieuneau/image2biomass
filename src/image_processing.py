@@ -100,13 +100,28 @@ TARGET_COLS: Final[list[str]] = [
 
 
 class BiomassDataset(Dataset):
-    def __init__(self, csv_path: str, img_dir: str, transform=None) -> None:
+    def __init__(
+        self, csv_path: str, img_dir: str, transform=None, metadata_csv: str | None = None
+    ) -> None:
         self.df: pd.DataFrame = pd.read_csv(csv_path)
         self.img_dir: str = img_dir
         self.transform = transform
 
+        # Optionally load metadata (State, etc.) from train.csv
+        self.states: list[str] | None = None
+        if metadata_csv is not None:
+            meta_df = pd.read_csv(metadata_csv)
+            # Get unique image_id -> State mapping
+            meta_df["image_id"] = meta_df["image_path"].str.extract(r"(ID\d+)")
+            state_map = meta_df.drop_duplicates("image_id").set_index("image_id")["State"]
+            self.states = self.df["image_id"].map(state_map).tolist()
+
     def __len__(self) -> int:
         return len(self.df)
+
+    def get_states(self) -> list[str] | None:
+        """Return list of states for each sample (for region-wise CV)."""
+        return self.states
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         # 1. Load Image

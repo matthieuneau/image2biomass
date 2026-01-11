@@ -6,6 +6,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from sklearn.model_selection import GroupKFold, KFold, LeaveOneGroupOut
+
 import wandb
 from models import UnifiedModel
 
@@ -17,32 +19,25 @@ MODEL_CONFIGS = {
     "convnext_tiny.fb_in22k": {"last_layer_dim": 768, "image_size": 224},
     "convnext_nano.d1h_in1k": {"last_layer_dim": 640, "image_size": 224},
     "convnext_pico.d1_in1k": {"last_layer_dim": 512, "image_size": 224},
-
     # Swin Transformer models
     "swin_tiny_patch4_window7_224": {"last_layer_dim": 768, "image_size": 224},
     "swin_s3_tiny_224": {"last_layer_dim": 768, "image_size": 224},
-
     # DINOv2 model
     "vit_small_patch14_dinov2.lvd142m": {"last_layer_dim": 384, "image_size": 518},
-
     # Vanilla ViT models
     "vit_tiny_patch16_224": {"last_layer_dim": 192, "image_size": 224},
     "vit_small_patch16_224": {"last_layer_dim": 384, "image_size": 224},
     "vit_small_patch32_224": {"last_layer_dim": 384, "image_size": 224},
-
     # ResNet models
     "resnet18": {"last_layer_dim": 512, "image_size": 224},
     "resnet34": {"last_layer_dim": 512, "image_size": 224},
     "resnet50": {"last_layer_dim": 2048, "image_size": 224},
-
     # EfficientNet models
     "efficientnet_b0": {"last_layer_dim": 1280, "image_size": 224},
     "efficientnet_b1": {"last_layer_dim": 1280, "image_size": 240},
     "efficientnet_b2": {"last_layer_dim": 1408, "image_size": 260},
-
     # MobileNet model
     "mobilenetv3_large_100": {"last_layer_dim": 1280, "image_size": 224},
-
     # RegNet models
     "regnetx_016": {"last_layer_dim": 912, "image_size": 224},
     "regnetx_032": {"last_layer_dim": 1008, "image_size": 224},
@@ -78,7 +73,10 @@ def compute_per_target_r2(
 
 
 def compute_per_target_loss(
-    y_true: torch.Tensor, y_pred: torch.Tensor, criterion: nn.Module, target_cols: list[str]
+    y_true: torch.Tensor,
+    y_pred: torch.Tensor,
+    criterion: nn.Module,
+    target_cols: list[str],
 ) -> dict:
     """Compute MSE loss for each target individually."""
     loss_dict = {}
@@ -130,7 +128,9 @@ def create_scatter_plot(
     return fig
 
 
-def create_per_target_loss_plot(per_target_loss: dict, target_cols: list[str]) -> plt.Figure:
+def create_per_target_loss_plot(
+    per_target_loss: dict, target_cols: list[str]
+) -> plt.Figure:
     """Create a bar plot showing validation loss for each target on the same plot."""
     fig, ax = plt.subplots(figsize=(10, 6))
     losses = [per_target_loss[f"val_loss_{name}"] for name in target_cols]
@@ -140,8 +140,14 @@ def create_per_target_loss_plot(per_target_loss: dict, target_cols: list[str]) -
 
     # Add value labels on bars
     for bar, loss in zip(bars, losses):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
-                f"{loss:.4f}", ha="center", va="bottom", fontsize=9)
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height(),
+            f"{loss:.4f}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
 
     ax.set_xlabel("Target")
     ax.set_ylabel("Validation Loss (MSE)")
@@ -151,18 +157,28 @@ def create_per_target_loss_plot(per_target_loss: dict, target_cols: list[str]) -
     return fig
 
 
-def create_per_target_r2_plot(per_target_r2: dict, target_cols: list[str]) -> plt.Figure:
+def create_per_target_r2_plot(
+    per_target_r2: dict, target_cols: list[str]
+) -> plt.Figure:
     """Create a bar plot showing R² for each target on the same plot."""
     fig, ax = plt.subplots(figsize=(10, 6))
     r2_values = [per_target_r2[f"val_R2_{name}"] for name in target_cols]
     colors = plt.cm.plasma(np.linspace(0.2, 0.8, len(target_cols)))
 
-    bars = ax.bar(target_cols, r2_values, color=colors, edgecolor="black", linewidth=0.5)
+    bars = ax.bar(
+        target_cols, r2_values, color=colors, edgecolor="black", linewidth=0.5
+    )
 
     # Add value labels on bars
     for bar, r2 in zip(bars, r2_values):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
-                f"{r2:.4f}", ha="center", va="bottom", fontsize=9)
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height(),
+            f"{r2:.4f}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
 
     ax.set_xlabel("Target")
     ax.set_ylabel("R² Score")
@@ -173,7 +189,9 @@ def create_per_target_r2_plot(per_target_r2: dict, target_cols: list[str]) -> pl
     return fig
 
 
-def create_residual_stats_plot(residual_stats: dict, target_cols: list[str]) -> plt.Figure:
+def create_residual_stats_plot(
+    residual_stats: dict, target_cols: list[str]
+) -> plt.Figure:
     """Create a plot showing mean and std of residuals for each target."""
     fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -183,16 +201,32 @@ def create_residual_stats_plot(residual_stats: dict, target_cols: list[str]) -> 
     x = np.arange(len(target_cols))
     width = 0.35
 
-    bars1 = ax.bar(x - width/2, means, width, label="Mean", color="steelblue", edgecolor="black")
-    bars2 = ax.bar(x + width/2, stds, width, label="Std", color="coral", edgecolor="black")
+    bars1 = ax.bar(
+        x - width / 2, means, width, label="Mean", color="steelblue", edgecolor="black"
+    )
+    bars2 = ax.bar(
+        x + width / 2, stds, width, label="Std", color="coral", edgecolor="black"
+    )
 
     # Add value labels
     for bar, val in zip(bars1, means):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
-                f"{val:.2f}", ha="center", va="bottom", fontsize=8)
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height(),
+            f"{val:.2f}",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
     for bar, val in zip(bars2, stds):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
-                f"{val:.2f}", ha="center", va="bottom", fontsize=8)
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height(),
+            f"{val:.2f}",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
 
     ax.set_xlabel("Target")
     ax.set_ylabel("Residual Value")
@@ -394,8 +428,7 @@ def get_model(config: dict) -> torch.nn.Module:
         raise ValueError(f"image_size not found for model {model_name}")
 
     return eval(config.get("model_class", "UnifiedModel"))(
-        model_name=config["model_name"],
-        last_layer_dim=config["last_layer_dim"]
+        model_name=config["model_name"], last_layer_dim=config["last_layer_dim"]
     )
 
 
@@ -413,3 +446,41 @@ def upload_model_to_kaggle():
         local_model_dir=LOCAL_MODEL_DIR,
         version_notes="Update 2026-01-01",
     )
+
+
+def get_cv_splits(n_samples: int, config: dict, groups: list | None = None):
+    """
+    Generate cross-validation train/val splits based on config.
+
+    Args:
+        n_samples: Total number of samples
+        config: Configuration dict with cv_enabled, cv_folds, cv_type
+        groups: List of group labels (e.g., states) for region-wise CV
+
+    Yields:
+        (fold_idx, train_indices, val_indices, fold_name)
+    """
+    cv_type = config.get("cv_type", "kfold")
+    cv_folds = config.get("cv_folds", 5)
+
+    indices = np.arange(n_samples)
+
+    if cv_type == "region":
+        if groups is None:
+            raise ValueError("Region-wise CV requires group labels (states)")
+        # Use LeaveOneGroupOut for region-wise CV (each region = 1 fold)
+        logo = LeaveOneGroupOut()
+        unique_groups = list(dict.fromkeys(groups))  # Preserve order
+        for fold_idx, (train_idx, val_idx) in enumerate(
+            logo.split(indices, groups=groups)
+        ):
+            # Find which group is left out
+            val_group = groups[val_idx[0]]
+            fold_name = f"fold_{fold_idx + 1}_val_{val_group}"
+            yield fold_idx, train_idx.tolist(), val_idx.tolist(), fold_name
+    else:
+        # Standard KFold
+        kfold = KFold(n_splits=cv_folds, shuffle=True, random_state=42)
+        for fold_idx, (train_idx, val_idx) in enumerate(kfold.split(indices)):
+            fold_name = f"fold_{fold_idx + 1}_of_{cv_folds}"
+            yield fold_idx, train_idx.tolist(), val_idx.tolist(), fold_name
