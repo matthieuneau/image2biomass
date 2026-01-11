@@ -239,6 +239,132 @@ def create_residual_stats_plot(
     return fig
 
 
+def create_mse_per_target_plot(
+    y_true: torch.Tensor, y_pred: torch.Tensor, target_cols: list[str]
+) -> plt.Figure:
+    """Create a bar chart showing unweighted MSE for each target."""
+    mse_per_target = [
+        (y_true[:, i] - y_pred[:, i]).pow(2).mean().item()
+        for i in range(len(target_cols))
+    ]
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    colors = plt.cm.coolwarm(np.linspace(0.2, 0.8, len(target_cols)))
+    bars = ax.bar(target_cols, mse_per_target, color=colors, edgecolor="black")
+
+    for bar, mse in zip(bars, mse_per_target):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height(),
+            f"{mse:.2f}",
+            ha="center",
+            va="bottom",
+            fontsize=10,
+            fontweight="bold",
+        )
+
+    mean_mse = np.mean(mse_per_target)
+    ax.axhline(
+        y=mean_mse, color="red", linestyle="--", alpha=0.7, label=f"Mean: {mean_mse:.2f}"
+    )
+    ax.set_xlabel("Target Type")
+    ax.set_ylabel("Unweighted MSE")
+    ax.set_title("Final Model: Unweighted MSE per Target")
+    ax.tick_params(axis="x", rotation=45)
+    ax.legend()
+    plt.tight_layout()
+    return fig
+
+
+def create_top10_residual_plot(
+    y_true: torch.Tensor,
+    y_pred: torch.Tensor,
+    target_idx: int,
+    target_name: str,
+) -> plt.Figure:
+    """
+    Create a bar chart showing residuals for the top 10% samples by true value.
+
+    For the specified target:
+    - Filters to samples in the top 10% by true value
+    - Shows residuals (y_true - y_pred) as bars
+    - Positive residuals (underprediction) shown in green, rising up
+    - Negative residuals (overprediction) shown in red, going down
+    - X-axis sorted by true value
+    """
+    from matplotlib.patches import Patch
+
+    # Extract the specific target column
+    y_true_col = y_true[:, target_idx].numpy()
+    y_pred_col = y_pred[:, target_idx].numpy()
+
+    # Compute the 90th percentile threshold (top 10%)
+    threshold = np.percentile(y_true_col, 90)
+
+    # Filter to top 10% samples by true value
+    mask = y_true_col >= threshold
+    y_true_top = y_true_col[mask]
+    y_pred_top = y_pred_col[mask]
+
+    # Compute residuals (positive = underprediction, negative = overprediction)
+    residuals = y_true_top - y_pred_top
+
+    # Sort by true value for x-axis ordering
+    sort_indices = np.argsort(y_true_top)
+    y_true_sorted = y_true_top[sort_indices]
+    residuals_sorted = residuals[sort_indices]
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    # Create x positions
+    x = np.arange(len(y_true_sorted))
+
+    # Assign colors based on residual sign
+    colors = ["forestgreen" if r >= 0 else "firebrick" for r in residuals_sorted]
+
+    # Plot bars
+    ax.bar(x, residuals_sorted, color=colors, edgecolor="black", linewidth=0.5, alpha=0.8)
+
+    # Add horizontal line at y=0
+    ax.axhline(y=0, color="black", linestyle="-", linewidth=1)
+
+    # Set x-axis labels to show true values
+    n_samples = len(y_true_sorted)
+    step = max(1, n_samples // 10)
+    ax.set_xticks(x[::step])
+    ax.set_xticklabels([f"{v:.0f}" for v in y_true_sorted[::step]], rotation=45, ha="right")
+
+    # Labels and title
+    ax.set_xlabel(f"True {target_name} (sorted, top 10%)")
+    ax.set_ylabel("Residual (True - Predicted)")
+    ax.set_title(f"Residual Analysis: Top 10% by {target_name}\n"
+                 f"Green = Underprediction | Red = Overprediction")
+
+    # Add legend
+    legend_elements = [
+        Patch(facecolor="forestgreen", edgecolor="black", label="Underprediction (True > Pred)"),
+        Patch(facecolor="firebrick", edgecolor="black", label="Overprediction (True < Pred)"),
+    ]
+    ax.legend(handles=legend_elements, loc="upper left")
+
+    # Add summary statistics as text
+    mean_residual = residuals_sorted.mean()
+    std_residual = residuals_sorted.std()
+    n_under = (residuals_sorted >= 0).sum()
+    n_over = (residuals_sorted < 0).sum()
+
+    stats_text = (f"n={len(residuals_sorted)} | Mean: {mean_residual:.1f} | Std: {std_residual:.1f}\n"
+                  f"Under: {n_under} ({100*n_under/len(residuals_sorted):.0f}%) | "
+                  f"Over: {n_over} ({100*n_over/len(residuals_sorted):.0f}%)")
+    ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
+            fontsize=9, verticalalignment="top", horizontalalignment="right",
+            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
+
+    plt.tight_layout()
+    return fig
+
+
 def log_hard_examples(
     full_dataset,
     val_indices: list,

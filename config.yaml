@@ -24,3 +24,5 @@ tile_size: 500         # Size of each square tile for TTA (in pixels)
 cv_enabled: false       # Enable cross-validation (default: false for standard 80/20 split)
 cv_folds: 5             # Number of folds for KFold CV (ignored for region CV)
 cv_type: kfold          # "kfold" for standard K-Fold, "region" for leave-one-state-out CV
+
+log_dataset_artifact: false

@@ -18,10 +18,12 @@ from utils import (
     compute_per_target_loss,
     compute_per_target_r2,
     compute_residual_stats,
+    create_mse_per_target_plot,
     create_per_target_loss_plot,
     create_per_target_r2_plot,
     create_residual_stats_plot,
     create_scatter_plot,
+    create_top10_residual_plot,
     enhanced_repr,
     get_gradient_norm,
     get_model,
@@ -485,6 +487,29 @@ def train(config=None):
                 target_cols=TARGET_COLS,
                 n_images=10,
                 n_crops=30,
+            # Final MSE bar chart per target type
+            fig = create_mse_per_target_plot(result["y_true"], result["y_pred"], TARGET_COLS)
+            wandb.log({"final_mse_per_target": wandb.Image(fig)})
+            plt.close(fig)
+
+            # Top 10% residual plots for each target
+            for i, name in enumerate(TARGET_COLS):
+                fig = create_top10_residual_plot(
+                    result["y_true"],
+                    result["y_pred"],
+                    target_idx=i,
+                    target_name=name,
+                )
+                wandb.log({f"top10_residual_{name}": wandb.Image(fig)})
+                plt.close(fig)
+
+            artifact = wandb.Artifact(
+                name=config["model_name"],
+                type="model",
+                metadata={
+                    "val_loss": result["best_val_loss"],
+                    "r2": result["final_r2"],
+                },
             )
             wandb.log({"crop_variance_analysis": crop_variance_table})
 
