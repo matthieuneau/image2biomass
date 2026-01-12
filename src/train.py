@@ -23,6 +23,7 @@ from utils import (
     enhanced_repr,
     get_gradient_norm,
     get_model,
+    log_crop_variance_analysis,
     log_dataset_artifact,
     log_hard_examples,
 )
@@ -235,6 +236,51 @@ def train(config=None):
                 log_dict["residual_stats_plot"] = wandb.Image(fig_residuals)
                 plt.close(fig_residuals)
 
+            # TTA evaluation every 5 epochs after epoch 30
+            tta_enabled = config.get("tta", False)
+            if tta_enabled and (epoch + 1) >= 30 and (epoch + 1) % 5 == 0:
+                from PIL import Image
+
+                tta_tiles = config.get("tta_tiles", 18)
+                tile_size = config.get("tile_size", 500)
+
+                model.eval()
+                tta_preds, tta_labels = [], []
+
+                with torch.no_grad():
+                    for idx in tqdm(val_indices_list, desc=f"TTA Eval (epoch {epoch + 1})"):
+                        img_name = full_dataset.df.iloc[idx]["image_id"]
+                        img_path = f"./data/train/{img_name}.jpg"
+                        raw_img = Image.open(img_path).convert("RGB")
+
+                        pred = model.predict_with_tta(
+                            raw_image=raw_img,
+                            image_size=image_size,
+                            tile_size=tile_size,
+                            tta_tiles=tta_tiles,
+                            device=device,
+                        )
+                        tta_preds.append(pred.unsqueeze(0))
+
+                        label = torch.tensor(
+                            full_dataset.df.iloc[idx][TARGET_COLS].values.astype(float)
+                        )
+                        tta_labels.append(label.unsqueeze(0))
+
+                tta_preds = torch.cat(tta_preds, dim=0).cpu()
+                tta_labels = torch.cat(tta_labels, dim=0).cpu()
+
+                # Compute TTA metrics
+                tta_loss = (criterion(tta_preds, tta_labels) * LOSS_WEIGHTS.cpu()).sum(dim=1).mean()
+                tta_ss_res = (LOSS_WEIGHTS.cpu() * (tta_labels - tta_preds) ** 2).sum()
+                tta_ss_tot = (LOSS_WEIGHTS.cpu() * (tta_labels - tta_labels.mean(dim=0)) ** 2).sum()
+                tta_r2 = 1 - (tta_ss_res / tta_ss_tot)
+
+                log_dict["tta_val_loss"] = tta_loss.item()
+                log_dict["tta_val_R2"] = tta_r2.item()
+
+                print(f"  TTA (tiles={tta_tiles}): Loss={tta_loss.item():.4f}, R2={tta_r2.item():.4f}")
+
             wandb.log(log_dict)
 
             # Early Stopping & Model Saving (Tracing for Python 3.14 compatibility)
@@ -258,6 +304,20 @@ def train(config=None):
         )
         wandb.log({"hard_examples": hard_examples_table})
 
+        # Log crop variance analysis (only meaningful for random crops)
+        if crop_type == "random":
+            crop_variance_table = log_crop_variance_analysis(
+                model=model,
+                dataset=full_dataset,
+                device=device,
+                image_size=image_size,
+                crop_width=crop_width,
+                target_cols=TARGET_COLS,
+                n_images=10,
+                n_crops=30,
+            )
+            wandb.log({"crop_variance_analysis": crop_variance_table})
+
         # Log Model Artifact at the end of the run
         model_artifact = wandb.Artifact(
             name=f"{config['model_name']}",
@@ -280,8 +340,8 @@ if __name__ == "__main__":
     with open("config.yaml", "r") as f:
         base_config = yaml.safe_load(f)
 
-    # 1. Log dataset artifact ONCE before training starts (skip if wandb disabled)
-    if not args.no_wandb:
+    # 1. Log dataset artifact ONCE before training starts (only if explicitly enabled)
+    if not args.no_wandb and base_config.get("log_dataset_artifact", False):
         log_dataset_artifact(base_config)
 
     # 2. Start training or sweep

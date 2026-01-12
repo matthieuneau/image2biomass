@@ -34,6 +34,27 @@ class RandomCrop:
         return img.crop((left, 0, right, img.height))
 
 
+class TileCrop:
+    """Extract a square tile at a specific (x, y) position (for TTA with 2D grid)."""
+    def __init__(self, tile_size: int, x: int, y: int):
+        """
+        Args:
+            tile_size: Size of the square tile to extract
+            x: Left position of the tile (0-indexed)
+            y: Top position of the tile (0-indexed)
+        """
+        self.tile_size = tile_size
+        self.x = x
+        self.y = y
+
+    def __call__(self, img):
+        left = self.x
+        top = self.y
+        right = min(left + self.tile_size, img.width)
+        bottom = min(top + self.tile_size, img.height)
+        return img.crop((left, top, right, bottom))
+
+
 class UnifiedModel(nn.Module):
     """Unified model class that can work with any timm backbone"""
 
@@ -150,4 +171,86 @@ class UnifiedModel(nn.Module):
         features = self.backbone(x)
         biomass = self.regressor(features)
         return biomass
+
+    def predict_with_tta(
+        self,
+        raw_image,
+        image_size: int,
+        tile_size: int,
+        tta_tiles: int,
+        device: torch.device,
+    ) -> torch.Tensor:
+        """
+        Perform inference with Test Time Augmentation using a 2D grid of tiles.
+
+        Images are 2000x1000, so we use a grid with 2x more columns than rows.
+        For tta_tiles=18, this creates a 3x6 grid (3 rows, 6 columns).
+
+        Args:
+            raw_image: PIL Image (raw, untransformed, expected 2000x1000)
+            image_size: Model input size (e.g., 224)
+            tile_size: Size of each square tile to extract
+            tta_tiles: Total number of tiles (should be rows * cols where cols = 2 * rows)
+            device: Device to run inference on
+
+        Returns:
+            Averaged predictions across all tiles (shape: [5])
+        """
+        import math
+
+        # Determine normalization based on model type
+        if 'dinov2' in self.model_name.lower():
+            mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+        elif 'vit' in self.model_name.lower() and 'dinov2' not in self.model_name.lower():
+            mean, std = [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
+        else:
+            mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+
+        img_width, img_height = raw_image.width, raw_image.height
+
+        # Calculate grid dimensions (2x more columns than rows for 2000x1000 images)
+        # tta_tiles = rows * cols, cols = 2 * rows => tta_tiles = 2 * rows^2
+        # rows = sqrt(tta_tiles / 2)
+        n_rows = max(1, int(math.sqrt(tta_tiles / 2)))
+        n_cols = max(1, tta_tiles // n_rows)
+
+        # Calculate evenly spaced tile positions
+        max_x = max(0, img_width - tile_size)
+        max_y = max(0, img_height - tile_size)
+
+        if n_cols == 1:
+            x_positions = [max_x // 2]
+        else:
+            x_positions = [int(i * max_x / (n_cols - 1)) for i in range(n_cols)]
+
+        if n_rows == 1:
+            y_positions = [max_y // 2]
+        else:
+            y_positions = [int(i * max_y / (n_rows - 1)) for i in range(n_rows)]
+
+        # Create transforms and run inference for each tile
+        all_preds = []
+        was_training = self.training
+        self.eval()
+
+        with torch.no_grad():
+            for y in y_positions:
+                for x in x_positions:
+                    tile_transform = transforms.Compose([
+                        TileCrop(tile_size, x, y),
+                        transforms.Resize((image_size, image_size)),
+                        transforms.ToTensor(),
+                        transforms.Normalize(mean=mean, std=std),
+                    ])
+                    img_tensor = tile_transform(raw_image).unsqueeze(0).to(device)
+                    pred = self.forward(img_tensor)
+                    all_preds.append(pred)
+
+        # Restore training mode if it was set
+        if was_training:
+            self.train()
+
+        # Average predictions across all tiles
+        all_preds = torch.cat(all_preds, dim=0)  # Shape: (n_rows * n_cols, 5)
+        return all_preds.mean(dim=0)  # Shape: (5,)
 
