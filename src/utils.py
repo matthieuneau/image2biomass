@@ -259,6 +259,109 @@ def log_hard_examples(
     return table
 
 
+def log_crop_variance_analysis(
+    model: torch.nn.Module,
+    dataset,
+    device: torch.device,
+    image_size: int,
+    crop_width: int,
+    target_cols: list[str],
+    n_images: int = 10,
+    n_crops: int = 30,
+) -> "wandb.Table":
+    """
+    Analyze prediction variance due to random crop position.
+
+    For each selected image, runs multiple forward passes with different random crops
+    and computes the std of predictions. Only logs Dry_Green_g, Dry_Dead_g, Dry_Total_g.
+
+    Args:
+        model: Trained model
+        dataset: Dataset with images (should have no transform or raw transform)
+        device: Device to run inference on
+        image_size: Model input size
+        crop_width: Width of random crop
+        target_cols: List of target column names
+        n_images: Number of images to analyze
+        n_crops: Number of random crops per image
+
+    Returns:
+        wandb.Table with variance analysis results
+    """
+    from models import RandomCrop
+    from torchvision import transforms
+    from PIL import Image
+
+    model.eval()
+
+    # Only analyze these targets
+    selected_targets = ["Dry_Green_g", "Dry_Dead_g", "Dry_Total_g"]
+    selected_indices = [target_cols.index(t) for t in selected_targets]
+
+    # Determine normalization based on model
+    model_name = getattr(model, 'model_name', '')
+    if 'dinov2' in model_name.lower():
+        mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+    elif 'vit' in model_name.lower() and 'dinov2' not in model_name.lower():
+        mean, std = [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
+    else:
+        mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+
+    # Transform with random crop (no fixed seed)
+    random_transform = transforms.Compose([
+        RandomCrop(crop_width),
+        transforms.Resize((image_size, image_size)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean, std=std),
+    ])
+
+    # Select random images
+    np.random.seed(None)  # Use true randomness
+    sample_indices = np.random.choice(len(dataset), size=min(n_images, len(dataset)), replace=False)
+
+    # Build table columns: image, then for each selected target: true, std, std/true ratio
+    columns = ["image", "image_id"]
+    for t in selected_targets:
+        columns.extend([f"true_{t}", f"pred_std_{t}", f"std/true_{t}"])
+
+    table = wandb.Table(columns=columns)
+
+    with torch.no_grad():
+        for idx in sample_indices:
+            # Get original image path and true values
+            img_name = dataset.df.iloc[idx]["image_id"]
+            img_path = os.path.join(dataset.img_dir, img_name + ".jpg")
+            true_values = dataset.df.iloc[idx][target_cols].values.astype(float)
+
+            # Load raw image
+            raw_img = Image.open(img_path).convert("RGB")
+
+            # Run multiple forward passes with different random crops
+            all_preds = []
+            for _ in range(n_crops):
+                img_tensor = random_transform(raw_img).unsqueeze(0).to(device)
+                pred = model(img_tensor).cpu().numpy()[0]
+                all_preds.append(pred)
+
+            all_preds = np.array(all_preds)  # Shape: (n_crops, 5)
+            pred_std = all_preds.std(axis=0)
+
+            # Build row
+            row = [wandb.Image(img_path), img_name]
+
+            # Add stats for selected targets only
+            for i in selected_indices:
+                true_val = float(true_values[i])
+                std_val = float(pred_std[i])
+                # Avoid division by zero
+                ratio = std_val / true_val if true_val > 0 else 0.0
+                row.extend([true_val, std_val, ratio])
+
+            table.add_data(*row)
+
+    return table
+
+
 def log_dataset_artifact(config):
     """Initializes a brief run to log the dataset artifact once."""
     with wandb.init(
