@@ -1,5 +1,5 @@
-program: train.py
-method: bayes   # random, grid, or bayes
+program: src/train.py
+method: grid   # random, grid, or bayes
 metric:
   name: val_loss
   goal: minimize
@@ -29,8 +29,8 @@ parameters:
     # max: 0.1
 
   batch_size:
-    value: 16
-    # values: [16, 32]
+    # value: 16
+    values: [16, 32]
 
   # --- Model Architecture ---
   model_class:
@@ -57,7 +57,7 @@ parameters:
       # - "vit_small_patch32_224"
 
       # # ResNet models (11.18M - 23.51M params)
-      - "resnet18"
+      # - "resnet18"
       # - "resnet34"
       # - "resnet50"
 
@@ -75,14 +75,14 @@ parameters:
 
   # --- Data Augmentation ---
   augment:
-    values: [true, false]
+    value: false
 
   # --- Training Configuration ---
   n_epochs:
-    value: 40
+    value: 50
 
   patience:
-    value: 5
+    value: 8
 
   bf16:
     value: true
@@ -95,6 +95,26 @@ parameters:
   prefetch_factor:
     value: 2
     # values: [2, 4]
+
+  # Test Time Augmentation (TTA) settings
+  tta:
+    value: false
+  tta_tiles:
+    value: 18
+  tile_size:
+    value: 500
+
+  # Cross-validation settings
+  cv_enabled:
+    value: false
+  cv_folds:
+    value: 5
+  cv_type:
+    value: kfold
+
+  log_dataset_artifact:
+    value: false
+
 
 # Optional: Limit the number of runs
 # run_cap: 100  # Maximum number of runs

@@ -2,6 +2,8 @@ import argparse
 import os
 import time
 
+import matplotlib
+matplotlib.use("agg")  # Use non-interactive backend for thread safety
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -210,6 +212,60 @@ def train_one_fold(
                 log_dict[f"{prefix}{key}"] = wandb.Image(fig)
                 plt.close(fig)
 
+        # TTA evaluation every 5 epochs after epoch 30
+        tta_enabled = config.get("tta", False)
+        if tta_enabled and (epoch + 1) >= 30 and (epoch + 1) % 5 == 0:
+            from PIL import Image
+
+            tta_tiles = config.get("tta_tiles", 18)
+            tile_size = config.get("tile_size", 500)
+
+            tta_preds, tta_labels = [], []
+            with torch.no_grad():
+                for idx in tqdm(val_indices, desc=f"TTA Eval (epoch {epoch + 1})"):
+                    img_name = full_dataset.df.iloc[idx]["image_id"]
+                    img_path = f"./data/train/{img_name}.jpg"
+                    raw_img = Image.open(img_path).convert("RGB")
+
+                    pred = model.predict_with_tta(
+                        raw_image=raw_img,
+                        image_size=image_size,
+                        tile_size=tile_size,
+                        tta_tiles=tta_tiles,
+                        device=device,
+                    )
+                    tta_preds.append(pred.unsqueeze(0))
+
+                    label = torch.tensor(
+                        full_dataset.df.iloc[idx][TARGET_COLS].values.astype(float)
+                    )
+                    tta_labels.append(label.unsqueeze(0))
+
+            tta_preds = torch.cat(tta_preds, dim=0).cpu()
+            tta_labels = torch.cat(tta_labels, dim=0).cpu()
+
+            # Compute TTA metrics
+            tta_loss = (
+                (criterion(tta_preds, tta_labels) * LOSS_WEIGHTS.cpu())
+                .sum(dim=1)
+                .mean()
+            )
+            tta_ss_res = (LOSS_WEIGHTS.cpu() * (tta_labels - tta_preds) ** 2).sum()
+            tta_ss_tot = (
+                LOSS_WEIGHTS.cpu() * (tta_labels - tta_labels.mean(dim=0)) ** 2
+            ).sum()
+            tta_r2 = 1 - (tta_ss_res / tta_ss_tot)
+
+            wandb.log(
+                {
+                    f"{prefix}tta_val_loss": tta_loss.item(),
+                    f"{prefix}tta_val_R2": tta_r2.item(),
+                }
+            )
+            print(
+                f"  TTA (tiles={tta_tiles}): Loss={tta_loss.item():.4f}, R2={tta_r2.item():.4f}"
+            )
+
         wandb.log(log_dict)
 
         # Early stopping & model saving
@@ -261,29 +317,10 @@ def train(config=None):
         else:
             image_size = config.get("image_size", 224)  # Default to 224
 
-        criterion = nn.MSELoss(reduction="none")
-        optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
+        crop_type = config.get("crop_type", "random")  # "center" or "random"
+        crop_width = config.get("crop_width", 500)  # Width of crop in pixels
 
-        # Data Setup - separate transforms for train (with optional augmentation) and val
-        use_augmentation = config.get("augment", False)
-        crop_type = config.get("crop_type", "center")  # "center" or "random"
-        crop_width = config.get("crop_width", 1000)  # Width of crop in pixels
-
-        # Get transforms: augmented for training (if enabled), base for validation
-        if use_augmentation:
-            train_transform = model.get_train_transforms(
-                image_size, crop_type, crop_width
-            )
-        else:
-            train_transform = model.get_transforms(image_size, crop_type, crop_width)
-        val_transform = model.get_transforms(image_size, crop_type, crop_width)
-
-        # Create base dataset to get indices for split
-        full_dataset = BiomassDataset(
-            csv_path="./data/y_train.csv",
-            img_dir="./data/train",
-            transform=val_transform,  # Used for hard examples logging
-        )
+        # Create temp model to get transforms
         temp_model = get_model(config)
         train_transform = (
             temp_model.get_train_transforms(image_size)
@@ -398,97 +435,21 @@ def train(config=None):
                 full_dataset,
             )
 
-            # TTA evaluation every 5 epochs after epoch 30
-            tta_enabled = config.get("tta", False)
-            if tta_enabled and (epoch + 1) >= 30 and (epoch + 1) % 5 == 0:
-                from PIL import Image
+            # Log hard examples at the end of training
+            hard_examples_table = log_hard_examples(
+                full_dataset,
+                result["val_indices"],
+                result["y_true"],
+                result["y_pred"],
+                TARGET_COLS,
+                n_examples=10,
+            )
+            wandb.log({"hard_examples": hard_examples_table})
 
-                tta_tiles = config.get("tta_tiles", 18)
-                tile_size = config.get("tile_size", 500)
-
-                model.eval()
-                tta_preds, tta_labels = [], []
-
-                with torch.no_grad():
-                    for idx in tqdm(
-                        val_indices_list, desc=f"TTA Eval (epoch {epoch + 1})"
-                    ):
-                        img_name = full_dataset.df.iloc[idx]["image_id"]
-                        img_path = f"./data/train/{img_name}.jpg"
-                        raw_img = Image.open(img_path).convert("RGB")
-
-                        pred = model.predict_with_tta(
-                            raw_image=raw_img,
-                            image_size=image_size,
-                            tile_size=tile_size,
-                            tta_tiles=tta_tiles,
-                            device=device,
-                        )
-                        tta_preds.append(pred.unsqueeze(0))
-
-                        label = torch.tensor(
-                            full_dataset.df.iloc[idx][TARGET_COLS].values.astype(float)
-                        )
-                        tta_labels.append(label.unsqueeze(0))
-
-                tta_preds = torch.cat(tta_preds, dim=0).cpu()
-                tta_labels = torch.cat(tta_labels, dim=0).cpu()
-
-                # Compute TTA metrics
-                tta_loss = (
-                    (criterion(tta_preds, tta_labels) * LOSS_WEIGHTS.cpu())
-                    .sum(dim=1)
-                    .mean()
-                )
-                tta_ss_res = (LOSS_WEIGHTS.cpu() * (tta_labels - tta_preds) ** 2).sum()
-                tta_ss_tot = (
-                    LOSS_WEIGHTS.cpu() * (tta_labels - tta_labels.mean(dim=0)) ** 2
-                ).sum()
-                tta_r2 = 1 - (tta_ss_res / tta_ss_tot)
-
-                log_dict["tta_val_loss"] = tta_loss.item()
-                log_dict["tta_val_R2"] = tta_r2.item()
-
-                print(
-                    f"  TTA (tiles={tta_tiles}): Loss={tta_loss.item():.4f}, R2={tta_r2.item():.4f}"
-                )
-
-            wandb.log(log_dict)
-
-            # Early Stopping & Model Saving (Tracing for Python 3.14 compatibility)
-            if avg_val_loss < best_val_loss:
-                best_val_loss = avg_val_loss
-                patience_counter = 0
-
-                # Tracing and saving locally
-                dummy_input = torch.randn(1, 3, image_size, image_size).to(device)
-                traced_model = torch.jit.trace(model, dummy_input)
-                model_path = f"models/model_{wandb.run.id}.pt"
-                torch.jit.save(traced_model, model_path)
-            else:
-                patience_counter += 1
-                if patience_counter >= config.get("patience", 5):
-                    break
-
-        # Log hard examples only once at the end of training
-        hard_examples_table = log_hard_examples(
-            full_dataset, val_indices_list, y_true, y_pred, TARGET_COLS, n_examples=10
-        )
-        wandb.log({"hard_examples": hard_examples_table})
-
-        # Log crop variance analysis (only meaningful for random crops)
-        if crop_type == "random":
-            crop_variance_table = log_crop_variance_analysis(
-                model=model,
-                dataset=full_dataset,
-                device=device,
-                image_size=image_size,
-                crop_width=crop_width,
-                target_cols=TARGET_COLS,
-                n_images=10,
-                n_crops=30,
             # Final MSE bar chart per target type
-            fig = create_mse_per_target_plot(result["y_true"], result["y_pred"], TARGET_COLS)
+            fig = create_mse_per_target_plot(
+                result["y_true"], result["y_pred"], TARGET_COLS
+            )
             wandb.log({"final_mse_per_target": wandb.Image(fig)})
             plt.close(fig)
 
@@ -503,24 +464,17 @@ def train(config=None):
                 wandb.log({f"top10_residual_{name}": wandb.Image(fig)})
                 plt.close(fig)
 
-            artifact = wandb.Artifact(
-                name=config["model_name"],
+            # Log Model Artifact at the end of the run
+            model_artifact = wandb.Artifact(
+                name=f"{config['model_name']}",
                 type="model",
                 metadata={
                     "val_loss": result["best_val_loss"],
                     "r2": result["final_r2"],
                 },
             )
-            wandb.log({"crop_variance_analysis": crop_variance_table})
-
-        # Log Model Artifact at the end of the run
-        model_artifact = wandb.Artifact(
-            name=f"{config['model_name']}",
-            type="model",
-            metadata={"val_loss": best_val_loss, "r2": r2_score.item()},
-        )
-        model_artifact.add_file(model_path)
-        wandb.log_artifact(model_artifact)
+            model_artifact.add_file(result["model_path"])
+            wandb.log_artifact(model_artifact)
 
 
 if __name__ == "__main__":

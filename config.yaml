@@ -1,7 +1,7 @@
 lr: !!float 1e-4
-n_epochs: 50
+n_epochs: 3
 train_split: 0.8
-batch_size: 32
+batch_size: 16
 bf16: true
 patience: 10
 num_workers: 4          # DataLoader workers (0 for single-threaded)
