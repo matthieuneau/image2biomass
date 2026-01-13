@@ -3,7 +3,7 @@ name = "image2biomass"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14.2"
+requires-python = ">=3.12.10"
 dependencies = [
     "matplotlib>=3.10.8",
     "pandas>=2.3.3",

@@ -19,7 +19,7 @@ early_terminate:
 parameters:
   # --- Training Hyperparameters ---
   lr:
-    value: 0.0001
+    values: [0.0001, 0.001, 0.00001]
     # distribution: log_uniform_values
     # min: 0.00001
     # max: 0.001
@@ -36,7 +36,7 @@ parameters:
 
   batch_size:
     # value: 16
-    values: [16, 32]
+    values: [8, 16]
 
   # --- Model Architecture ---
   model_class:
@@ -46,26 +46,26 @@ parameters:
   model_name:
     values:
       # ConvNeXt models (8.53M - 27.82M params)
-      - "convnext_tiny.fb_in22k"
+      # - "convnext_tiny.fb_in22k"
       # - "convnext_nano.d1h_in1k"
       # - "convnext_pico.d1_in1k"
 
       # # Swin Transformer models (~27.5M params)
       # - "swin_tiny_patch4_window7_224"
-      - "swin_s3_tiny_224"
+      # - "swin_s3_tiny_224"
 
       # # DINOv2 model (22.06M params, 518x518 input)
       - "vit_small_patch14_dinov2.lvd142m"
 
       # # Vanilla ViT models (5.52M - 22.49M params)
       # - "vit_tiny_patch16_224"
-      - "vit_small_patch16_224"
+      # - "vit_small_patch16_224"
       # - "vit_small_patch32_224"
 
       # # ResNet models (11.18M - 23.51M params)
       # - "resnet18"
       # - "resnet34"
-      - "resnet50"
+      # - "resnet50"
 
       # # EfficientNet models (4.01M - 7.70M params)
       # - "efficientnet_b0"
@@ -77,7 +77,7 @@ parameters:
 
       # # RegNet models (8.28M - 14.29M params)
       # - "regnetx_016"
-      - "regnetx_032"
+      # - "regnetx_032"
 
   # --- Data Augmentation ---
   augment:
@@ -123,4 +123,4 @@ parameters:
 
 
 # Optional: Limit the number of runs
-# run_cap: 100  # Maximum number of runs
+run_cap: 20
