@@ -1,5 +1,6 @@
 import argparse
 import os
+import platform
 import time
 
 import matplotlib
@@ -73,6 +74,12 @@ def create_dataloaders(train_dataset, val_dataset, config, device):
     """Create train and val dataloaders with common settings."""
     num_workers = config.get("num_workers", 4)
     prefetch = config.get("prefetch_factor", 2) if num_workers > 0 else None
+
+    # Disable multiprocessing on macOS to prevent random DataLoader crashes
+    if platform.system() == "Darwin" and num_workers > 0:
+        print("⚠️  macOS detected: setting num_workers=0 to prevent DataLoader crashes")
+        num_workers = 0
+        prefetch = None
     common_kwargs = {
         "batch_size": config["batch_size"],
         "num_workers": num_workers,
