@@ -1,0 +1,334 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  annotations:
+    meta.helm.sh/release-name: ray-common-chart
+    meta.helm.sh/release-namespace: aip-practice
+  creationTimestamp: "2025-06-06T22:25:11Z"
+  generation: 36
+  labels:
+    admission.datadoghq.com/mutate-pods: "true"
+    admission.datadoghq.com/validate-pods: "true"
+    admission.datadoghq.com/validate-services: "true"
+    app: ray-common
+    app.kubernetes.io/instance: ray-common
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: ray-local-dir-poc-0.1.0
+    service: ds-ray-cluster
+    source: ray-common
+    tags.datadoghq.com/service: ds-ray-cluster
+    team: ai-platform
+  name: ray-common-ray-cluster-policy
+  namespace: aip-practice
+  resourceVersion: "1889586391"
+  uid: 026bae73-7da8-41a3-9f72-8adac01dacb1
+specs:
+- description: Egress to DNS (node-local-dns)
+  egress:
+  - toPorts:
+    - ports:
+      - port: "53"
+        protocol: ANY
+      rules:
+        dns:
+        - matchPattern: '*'
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+- description: allow ingress from kube-system
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: kube-system
+- description: egress to kube API server for head only (ray autoscaler)
+  egress:
+  - toServices:
+    - k8sService:
+        namespace: default
+        serviceName: kubernetes
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+      ray.io/node-type: head
+- description: Allow egress to private CIDRs (e.g. Vault, RDS)
+  egress:
+  - toFQDNs:
+    - matchName: vault.us1.staging.dog
+    toPorts:
+    - ports:
+      - port: "443"
+        protocol: TCP
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+- description: Egress to github
+  egress:
+  - toFQDNs:
+    - matchName: github.com
+    - matchPattern: '*.githubusercontent.com'
+    - matchPattern: '*.github.io'
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+- description: Egress to Wandb
+  egress:
+  - toFQDNs:
+    - matchName: api.wandb.ai
+    - matchPattern: '*.wandbusercontent.com'
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+- description: Label Studio
+  egress:
+  - toFQDNs:
+    - matchPattern: label-studio-headless.label-studio*.*.local-dc.fabric.dog
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: label-studio
+        service: label-studio-headless
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: label-studio-sds
+        service: label-studio-headless
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+      ray.io/node-type: head
+- description: Egress to DocStore
+  egress:
+  - toFQDNs:
+    - matchPattern: docstore.rapid-ai-platform.*.*.fabric.dog
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: rapid-ai-platform
+        service: docstore
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+      ray.io/node-type: head
+- description: Ingress from the Internal Services Proxy to Public Proxy for Hub
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+      ray.io/node-type: head
+  ingress:
+  - fromCIDR:
+    - 172.16.0.0/12
+    - 10.0.0.0/8
+    - 100.64.0.0/10
+    - 192.168.0.0/16
+    toPorts:
+    - ports:
+      - port: "8266"
+        protocol: TCP
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: rapid-data-science-ray
+        service: ray-gateway
+    toPorts:
+    - ports:
+      - port: "8266"
+        protocol: TCP
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: rapid-ai-platform
+        service: altair
+    toPorts:
+    - ports:
+      - port: "8266"
+        protocol: TCP
+- description: Egress to xds-control-plane service
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        app: xds-control-plane
+        k8s:io.kubernetes.pod.namespace: service-discovery
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+      ray.io/node-type: head
+- description: Egress to eds-control-plane service
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        app: eds-control-plane
+        k8s:io.kubernetes.pod.namespace: service-discovery
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+      ray.io/node-type: head
+- description: allow traffic from kuberay
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: ray-operator
+        service: kuberay-operator
+- description: egress to kuberay for head only (ray autoscaler)
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: ray-operator
+        service: kuberay-operator
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+      ray.io/node-type: head
+- description: allow intra cluster traffic. to be narrowed down later.
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        dd.ray/ray-chart: ray-common
+        io.kubernetes.pod.namespace: aip-practice
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        dd.ray/ray-chart: ray-common
+        io.kubernetes.pod.namespace: aip-practice
+- description: Egress to object stores
+  egress:
+  - toFQDNs:
+    - matchPattern: '*.s3.amazonaws.com'
+    - matchPattern: '*.s3.*.amazonaws.com'
+    - matchPattern: '*.s3-fips.*.amazonaws.com'
+    - matchPattern: '*.blob.core.windows.net'
+    - matchPattern: '*.dfs.core.windows.net'
+    - matchName: storage.googleapis.com
+    - matchPattern: fashion-mnist.s3-website.*.amazonaws.com
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+- description: 'Egress to package files (TODO: magic mirror?)'
+  egress:
+  - toFQDNs:
+    - matchName: files.pythonhosted.org
+    - matchName: pypi.org
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+- description: Egress to other services
+  egress:
+  - toFQDNs:
+    - matchName: mlflow.mlflow.all-clusters.local-dc.fabric.dog
+    - matchName: mlflow.us1.prod.dog
+    - matchName: braintrust.us1.prod.dog
+    - matchName: ai-proxy.rapid-chatbot.all-clusters.local-dc.fabric.dog
+    - matchName: ddvector.rapid-chatbot.all-clusters.local-dc.fabric.dog
+    - matchName: ai-gateway.rapid-ai-platform.all-clusters.local-dc.fabric.dog
+    - matchName: lakehouse-gateway.rapid-dna.all-clusters.local-dc.fabric.dog
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: mlflow
+        service: mlflow
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+- description: Egress to Event Query services
+  egress:
+  - toFQDNs:
+    - matchPattern: event-query-*.logs-general.all-clusters.local-dc.fabric.dog
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+- description: Egress to Visual Studio Code and Cursor related services
+  egress:
+  - toFQDNs:
+    - matchName: update.code.visualstudio.com
+    - matchName: code.visualstudio.com
+    - matchName: go.microsoft.com
+    - matchName: marketplace.visualstudio.com
+    - matchPattern: '*.gallery.vsassets.io'
+    - matchPattern: '*.gallerycdn.vsassets.io'
+    - matchName: rink.hockeyapp.net
+    - matchName: bingsettingssearch.trafficmanager.net
+    - matchName: vscode.search.windows.net
+    - matchName: raw.githubusercontent.com
+    - matchName: vsmarketplacebadges.dev
+    - matchPattern: '*.vscode-cdn.net'
+    - matchName: vscode.download.prss.microsoft.com
+    - matchName: download.visualstudio.microsoft.com
+    - matchName: vscode-sync.trafficmanager.net
+    - matchName: vscode-sync-insiders.trafficmanager.net
+    - matchName: vscode.dev
+    - matchPattern: '*.vscode-unpkg.net'
+    - matchName: default.exp-tas.com
+    - matchName: api2.cursor.sh
+    - matchName: marketplace.cursorapi.com
+    - matchName: cursor-cdn.com
+    - matchName: downloads.cursor.com
+    - matchName: anysphere-binaries.s3.us-east-1.amazonaws.com
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+- description: Egress to Datadog (restricted to specific users)
+  egress:
+  - toFQDNs:
+    - matchName: api.datadoghq.com
+  endpointSelector:
+    matchExpressions:
+    - key: created-by
+      operator: In
+      values:
+      - bogna.blaszczyk
+      - afshin.rostamizadeh
+      - nicole.cybul
+      - yilun.zhou
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+- description: Egress to Datadog (restricted to specific users)
+  egress:
+  - toFQDNs:
+    - matchName: api.datadoghq.com
+  endpointSelector:
+    matchExpressions:
+    - key: dd.ray/created-by
+      operator: In
+      values:
+      - bogna.blaszczyk
+      - afshin.rostamizadeh
+      - nicole.cybul
+      - yilun.zhou
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+- description: Egress to Datadog (restricted to specific teams)
+  egress:
+  - toFQDNs:
+    - matchName: api.datadoghq.com
+  endpointSelector:
+    matchExpressions:
+    - key: team
+      operator: In
+      values:
+      - applied-ai-foundation-models-and-research
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+- description: Egress to huggingface
+  egress:
+  - toFQDNs:
+    - matchPattern: cdn*.huggingface.co
+    - matchPattern: cdn*.hf.co
+    - matchPattern: '*.xethub.hf.co'
+    - matchName: huggingface.co
+  endpointSelector:
+    matchLabels:
+      dd.ray/ray-chart: ray-common
+- description: Allow traffic within the namespace
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: aip-practice
+  endpointSelector:
+    matchLabels: {}
+status:
+  conditions:
+  - lastTransitionTime: "2025-06-06T22:25:11Z"
+    message: Policy validation succeeded
+    status: "True"
+    type: Valid
