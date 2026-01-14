@@ -2,6 +2,8 @@
 # Run a wandb sweep with multiple parallel agents
 # Usage: ./scripts/run_sweep.sh [num_agents] [sweep_config]
 
+source .venv/bin/activate
+
 NUM_AGENTS=${1:-2}
 SWEEP_CONFIG=${2:-sweep.yaml}
 

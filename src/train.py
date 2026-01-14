@@ -486,7 +486,6 @@ def train(config=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--sweep", action="store_true", help="Run in W&B Sweep mode")
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging")
     args = parser.parse_args()
 
@@ -496,14 +495,13 @@ if __name__ == "__main__":
     with open("config.yaml", "r") as f:
         base_config = yaml.safe_load(f)
 
-    # 1. Log dataset artifact ONCE before training starts (only if explicitly enabled)
+    # Log dataset artifact ONCE before training starts (only if explicitly enabled)
     if not args.no_wandb and base_config.get("log_dataset_artifact", False):
         log_dataset_artifact(base_config)
 
-    if args.sweep:
-        with open("sweep.yaml", "r") as f:
-            sweep_config = yaml.safe_load(f)
-        sweep_id = wandb.sweep(sweep_config, project="image2biomass")
-        wandb.agent(sweep_id, function=train)
+    if os.environ.get("WANDB_SWEEP_ID"):
+        # Running as a wandb agent - config provided by sweep
+        train()
     else:
+        # Standalone training with config.yaml
         train(config=base_config)

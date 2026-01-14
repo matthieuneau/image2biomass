@@ -1,3 +1,5 @@
+entity: matthieu-neau
+project: image2biomass
 program: src/train.py
 method: grid   # random, grid, or bayes
 
@@ -5,7 +7,6 @@ command:
   - ${env}
   - python
   - src/train.py
-  - --sweep
 metric:
   name: val_loss
   goal: minimize
@@ -19,14 +20,15 @@ early_terminate:
 parameters:
   # --- Training Hyperparameters ---
   lr:
-    values: [0.0001, 0.001, 0.00001]
+    # values: [0.0001, 0.001, 0.00001]
+    value: 0.0001
     # distribution: log_uniform_values
     # min: 0.00001
     # max: 0.001
 
   optimizer:
-    # value: "adam"
-    values: ["adam", "adamw"]
+    value: "adam"
+    # values: ["adam", "adamw"]
 
   weight_decay:
     value: 0.05
@@ -35,8 +37,8 @@ parameters:
     # max: 0.1
 
   batch_size:
-    # value: 16
-    values: [8, 16]
+     value: 16
+    # values: [8, 16]
 
   # --- Model Architecture ---
   model_class:
@@ -47,36 +49,36 @@ parameters:
     values:
       # ConvNeXt models (8.53M - 27.82M params)
       # - "convnext_tiny.fb_in22k"
-      # - "convnext_nano.d1h_in1k"
+      - "convnext_nano.d1h_in1k"
       # - "convnext_pico.d1_in1k"
 
       # # Swin Transformer models (~27.5M params)
       # - "swin_tiny_patch4_window7_224"
-      # - "swin_s3_tiny_224"
+      - "swin_s3_tiny_224"
 
       # # DINOv2 model (22.06M params, 518x518 input)
       - "vit_small_patch14_dinov2.lvd142m"
 
       # # Vanilla ViT models (5.52M - 22.49M params)
       # - "vit_tiny_patch16_224"
-      # - "vit_small_patch16_224"
+      - "vit_small_patch16_224"
       # - "vit_small_patch32_224"
 
       # # ResNet models (11.18M - 23.51M params)
       # - "resnet18"
-      # - "resnet34"
+      - "resnet34"
       # - "resnet50"
 
       # # EfficientNet models (4.01M - 7.70M params)
       # - "efficientnet_b0"
-      # - "efficientnet_b1"
+      - "efficientnet_b1"
       # - "efficientnet_b2"
 
       # # MobileNet model (4.20M params)
       # - "mobilenetv3_large_100"
 
       # # RegNet models (8.28M - 14.29M params)
-      # - "regnetx_016"
+      - "regnetx_016"
       # - "regnetx_032"
 
   # --- Data Augmentation ---
