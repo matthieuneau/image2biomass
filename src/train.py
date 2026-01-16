@@ -125,7 +125,7 @@ def train_one_fold(
 
     best_val_loss, patience_counter = float("inf"), 0
     n_epochs = config.get("n_epochs", 10)
-    best_state, model_path = None, None
+    best_state, model_path, backbone_path = None, None, None
 
     print(
         f"\n{'=' * 60}\nTraining {fold_name or 'model'} | Train: {len(train_indices)}, Val: {len(val_indices)}\n{'=' * 60}"
@@ -280,11 +280,20 @@ def train_one_fold(
             best_val_loss, patience_counter = avg_val_loss, 0
             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
             dummy = torch.randn(1, 3, image_size, image_size).to(device)
+
+            # Save full model (for inference)
             traced = torch.jit.trace(model, dummy)
             model_path = (
                 f"models/model_{wandb.run.id}{'_' + fold_name if fold_name else ''}.pt"
             )
             torch.jit.save(traced, model_path)
+
+            # Save backbone separately (for ensemble building)
+            backbone_traced = torch.jit.trace(model.backbone, dummy)
+            backbone_path = (
+                f"models/backbone_{wandb.run.id}{'_' + fold_name if fold_name else ''}.pt"
+            )
+            torch.jit.save(backbone_traced, backbone_path)
         else:
             patience_counter += 1
             if patience_counter >= config.get("patience", 5):
@@ -301,14 +310,45 @@ def train_one_fold(
         "val_indices": val_indices,
         "model_state": best_state,
         "model_path": model_path,
+        "backbone_path": backbone_path,
         "image_size": image_size,
     }
+
+
+def _generate_run_name(config) -> str:
+    """Generate informative run name from config."""
+    import hashlib
+    import time
+
+    model = config.get("model_name", "unknown")
+    # Shorten common model name patterns
+    model_short = (
+        model.replace("vit_small_patch14_dinov2.lvd142m", "dino2s")
+        .replace("vit_small_patch16_224", "vits16")
+        .replace("vit_tiny_patch16_224", "vitt16")
+        .replace("convnext_nano.d1h_in1k", "cnxn")
+        .replace("convnext_tiny.fb_in22k", "cnxt")
+        .replace("efficientnet_b", "effb")
+        .replace("mobilenetv3_large_100", "mbnl")
+        .replace("swin_tiny_patch4_window7_224", "swint")
+        .replace("swin_s3_tiny_224", "swins3")
+        .replace("regnetx_0", "regx")
+    )
+    lr = config.get("lr", 0.0001)
+    bs = config.get("batch_size", 16)
+    # 4-char hash from timestamp
+    hash_4 = hashlib.md5(str(time.time()).encode()).hexdigest()[:4]
+    return f"{model_short}-lr{lr}-bs{bs}-{hash_4}"
 
 
 def train(config=None):
     """Main training function for single run or CV."""
     with wandb.init(project="image2biomass", config=config):
         config = wandb.config
+
+        # Set informative run name
+        wandb.run.name = _generate_run_name(config)
+
         device = torch.device(
             "cuda"
             if torch.cuda.is_available()

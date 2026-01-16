@@ -55,8 +55,105 @@ class TileCrop:
         return img.crop((left, top, right, bottom))
 
 
+def _get_activation(name: str) -> nn.Module:
+    """Returns activation module by name."""
+    activations = {
+        "relu": nn.ReLU(),
+        "gelu": nn.GELU(),
+        "silu": nn.SiLU(),
+        "leaky_relu": nn.LeakyReLU(0.1),
+        "softplus": nn.Softplus(),
+    }
+    return activations.get(name.lower(), nn.ReLU())
+
+
+class Backbone(nn.Module):
+    """Feature extractor wrapping a timm model."""
+
+    def __init__(self, model_name: str, pretrained: bool = True):
+        super().__init__()
+        self.model_name = model_name
+        self.model = timm.create_model(model_name, pretrained=pretrained, num_classes=0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.model(x)
+
+
+class Regressor(nn.Module):
+    """Configurable regression head for biomass prediction."""
+
+    def __init__(
+        self,
+        in_dim: int,
+        hidden_dim: int = 128,
+        num_layers: int = 1,
+        dropout: float = 0.2,
+        activation: str = "relu",
+        output_activation: str = "relu",
+        normalization: str = "none",
+        num_outputs: int = 5,
+    ):
+        super().__init__()
+        self.in_dim = in_dim
+        self.layers = self._build_layers(
+            in_dim=in_dim,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            activation=activation,
+            output_activation=output_activation,
+            normalization=normalization,
+            num_outputs=num_outputs,
+        )
+
+    def _build_layers(
+        self,
+        in_dim: int,
+        hidden_dim: int,
+        num_layers: int,
+        dropout: float,
+        activation: str,
+        output_activation: str,
+        normalization: str,
+        num_outputs: int,
+    ) -> nn.Sequential:
+        """Builds the regression layers."""
+        layers = []
+        current_dim = in_dim
+
+        # Hidden layers
+        for _ in range(num_layers):
+            layers.append(nn.Linear(current_dim, hidden_dim))
+
+            # Normalization (before activation)
+            if normalization == "batch":
+                layers.append(nn.BatchNorm1d(hidden_dim))
+            elif normalization == "layer":
+                layers.append(nn.LayerNorm(hidden_dim))
+
+            # Activation
+            layers.append(_get_activation(activation))
+
+            # Dropout
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+
+            current_dim = hidden_dim
+
+        # Output layer
+        layers.append(nn.Linear(current_dim, num_outputs))
+
+        # Output activation (ensure non-negative)
+        layers.append(_get_activation(output_activation))
+
+        return nn.Sequential(*layers)
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        return self.layers(features)
+
+
 class UnifiedModel(nn.Module):
-    """Unified model class that can work with any timm backbone"""
+    """Unified model class that composes a Backbone and Regressor."""
 
     def __init__(
         self,
@@ -73,11 +170,11 @@ class UnifiedModel(nn.Module):
         super().__init__()
         self.model_name = model_name
 
-        # 1. Feature Extractor (removes original head)
-        self.backbone = timm.create_model(model_name, pretrained=pretrained, num_classes=0)
+        # 1. Feature Extractor
+        self.backbone = Backbone(model_name, pretrained=pretrained)
 
-        # 2. Build Regression Head
-        self.regressor = self._build_regressor(
+        # 2. Regression Head
+        self.regressor = Regressor(
             in_dim=last_layer_dim,
             hidden_dim=head_hidden_dim,
             num_layers=head_num_layers,
@@ -86,60 +183,6 @@ class UnifiedModel(nn.Module):
             output_activation=head_output_activation,
             normalization=head_normalization,
         )
-
-    def _get_activation(self, name: str) -> nn.Module:
-        """Returns activation module by name."""
-        activations = {
-            "relu": nn.ReLU(),
-            "gelu": nn.GELU(),
-            "silu": nn.SiLU(),
-            "leaky_relu": nn.LeakyReLU(0.1),
-            "softplus": nn.Softplus(),
-        }
-        return activations.get(name.lower(), nn.ReLU())
-
-    def _build_regressor(
-        self,
-        in_dim: int,
-        hidden_dim: int,
-        num_layers: int,
-        dropout: float,
-        activation: str,
-        output_activation: str,
-        normalization: str,
-    ) -> nn.Sequential:
-        """Builds the regression head with configurable architecture."""
-        layers = []
-
-        # Input dimension for first layer
-        current_dim = in_dim
-
-        # Hidden layers
-        for i in range(num_layers):
-            layers.append(nn.Linear(current_dim, hidden_dim))
-
-            # Normalization (before activation)
-            if normalization == "batch":
-                layers.append(nn.BatchNorm1d(hidden_dim))
-            elif normalization == "layer":
-                layers.append(nn.LayerNorm(hidden_dim))
-
-            # Activation
-            layers.append(self._get_activation(activation))
-
-            # Dropout
-            if dropout > 0:
-                layers.append(nn.Dropout(dropout))
-
-            current_dim = hidden_dim
-
-        # Output layer
-        layers.append(nn.Linear(current_dim, 5))  # 5 biomass targets
-
-        # Output activation (ensure non-negative)
-        layers.append(self._get_activation(output_activation))
-
-        return nn.Sequential(*layers)
 
     @staticmethod
     def get_transforms_static(model_name: str, image_size: int, crop_type: str = "center", crop_width: int = 1000):
@@ -320,4 +363,92 @@ class UnifiedModel(nn.Module):
         # Average predictions across all tiles
         all_preds = torch.cat(all_preds, dim=0)  # Shape: (n_rows * n_cols, 5)
         return all_preds.mean(dim=0)  # Shape: (5,)
+
+
+class EnsembleModel(nn.Module):
+    """Ensemble model that combines multiple backbones with a shared regression head.
+
+    Loads pre-trained backbones (saved as TorchScript), freezes them, concatenates
+    their features, and trains a new regression head on the combined features.
+    """
+
+    def __init__(
+        self,
+        backbone_paths: list[str],
+        feature_dims: list[int],
+        head_hidden_dim: int = 256,
+        head_num_layers: int = 2,
+        head_dropout: float = 0.3,
+        head_activation: str = "relu",
+        head_output_activation: str = "relu",
+        head_normalization: str = "layer",
+        freeze_backbones: bool = True,
+    ):
+        """
+        Args:
+            backbone_paths: List of paths to saved backbone .pt files
+            feature_dims: List of feature dimensions for each backbone (must match order)
+            head_hidden_dim: Hidden dimension for the ensemble regressor
+            head_num_layers: Number of hidden layers in ensemble regressor
+            head_dropout: Dropout rate for ensemble regressor
+            head_activation: Activation function for hidden layers
+            head_output_activation: Activation function for output (ensures non-negative)
+            head_normalization: Normalization type ("none", "batch", "layer")
+            freeze_backbones: Whether to freeze backbone weights (recommended)
+        """
+        super().__init__()
+
+        if len(backbone_paths) != len(feature_dims):
+            raise ValueError("backbone_paths and feature_dims must have same length")
+
+        # Load backbones
+        self.backbones = nn.ModuleList()
+        for path in backbone_paths:
+            backbone = torch.jit.load(path)
+            self.backbones.append(backbone)
+
+        # Freeze backbones if requested
+        if freeze_backbones:
+            for backbone in self.backbones:
+                for param in backbone.parameters():
+                    param.requires_grad = False
+
+        # Total feature dimension is sum of all backbone outputs
+        total_feature_dim = sum(feature_dims)
+
+        # Create ensemble regression head
+        self.regressor = Regressor(
+            in_dim=total_feature_dim,
+            hidden_dim=head_hidden_dim,
+            num_layers=head_num_layers,
+            dropout=head_dropout,
+            activation=head_activation,
+            output_activation=head_output_activation,
+            normalization=head_normalization,
+        )
+
+        # Store metadata
+        self.feature_dims = feature_dims
+        self.freeze_backbones = freeze_backbones
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass: extract features from all backbones, concatenate, predict."""
+        features = []
+        for backbone in self.backbones:
+            feat = backbone(x)
+            features.append(feat)
+
+        # Concatenate features from all backbones
+        combined = torch.cat(features, dim=1)
+
+        # Pass through ensemble regressor
+        return self.regressor(combined)
+
+    @property
+    def num_backbones(self) -> int:
+        return len(self.backbones)
+
+    @property
+    def total_feature_dim(self) -> int:
+        return sum(self.feature_dims)
 

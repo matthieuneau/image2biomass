@@ -46,19 +46,19 @@ parameters:
 
   # --- Regressor Head Configuration ---
   head_hidden_dim:
-    # value: 128
-    values: [64, 128]
+    value: 128
+    # values: [64, 128]
 
   head_num_layers:
-    # value: 1
-    values: [1, 2]
+    value: 2
+    # values: [1, 2]
 
   head_dropout:
     value: 0.2
     # values: [0.0, 0.1, 0.2, 0.3, 0.5]
 
   head_activation:
-    value: "relu"
+    value: "gelu"
     # values: ["relu", "gelu", "silu", "leaky_relu"]
 
   head_output_activation:
@@ -79,7 +79,7 @@ parameters:
 
       # # Swin Transformer models (~27.5M params)
       # - "swin_tiny_patch4_window7_224"
-      # - "swin_s3_tiny_224"
+      - "swin_s3_tiny_224"
 
       # # DINOv2 model (22.06M params, 518x518 input)
       # - "vit_small_patch14_dinov2.lvd142m"
@@ -91,12 +91,12 @@ parameters:
 
       # # ResNet models (11.18M - 23.51M params)
       # - "resnet18"
-      - "resnet34"
+      # - "resnet34"
       # - "resnet50"
 
       # # EfficientNet models (4.01M - 7.70M params)
       # - "efficientnet_b0"
-      - "efficientnet_b1"
+      # - "efficientnet_b1"
       # - "efficientnet_b2"
 
       # # MobileNet model (4.20M params)
