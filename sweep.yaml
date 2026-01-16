@@ -44,6 +44,31 @@ parameters:
   model_class:
     value: "UnifiedModel"  # Use the new unified model class
 
+  # --- Regressor Head Configuration ---
+  head_hidden_dim:
+    # value: 128
+    values: [64, 128]
+
+  head_num_layers:
+    # value: 1
+    values: [1, 2]
+
+  head_dropout:
+    value: 0.2
+    # values: [0.0, 0.1, 0.2, 0.3, 0.5]
+
+  head_activation:
+    value: "relu"
+    # values: ["relu", "gelu", "silu", "leaky_relu"]
+
+  head_output_activation:
+    value: "relu"
+    # values: ["relu", "softplus"]
+
+  head_normalization:
+    value: "none"
+    # values: ["none", "batch", "layer"]
+
   # Model backbone selection - utils.py will automatically set last_layer_dim and image_size
   model_name:
     values:
@@ -54,14 +79,14 @@ parameters:
 
       # # Swin Transformer models (~27.5M params)
       # - "swin_tiny_patch4_window7_224"
-      - "swin_s3_tiny_224"
+      # - "swin_s3_tiny_224"
 
       # # DINOv2 model (22.06M params, 518x518 input)
-      - "vit_small_patch14_dinov2.lvd142m"
+      # - "vit_small_patch14_dinov2.lvd142m"
 
       # # Vanilla ViT models (5.52M - 22.49M params)
-      # - "vit_tiny_patch16_224"
-      - "vit_small_patch16_224"
+      - "vit_tiny_patch16_224"
+      # - "vit_small_patch16_224"
       # - "vit_small_patch32_224"
 
       # # ResNet models (11.18M - 23.51M params)
@@ -78,7 +103,7 @@ parameters:
       # - "mobilenetv3_large_100"
 
       # # RegNet models (8.28M - 14.29M params)
-      - "regnetx_016"
+      # - "regnetx_016"
       # - "regnetx_032"
 
   # --- Data Augmentation ---

@@ -554,7 +554,14 @@ def get_model(config: dict) -> torch.nn.Module:
         raise ValueError(f"image_size not found for model {model_name}")
 
     return eval(config.get("model_class", "UnifiedModel"))(
-        model_name=config["model_name"], last_layer_dim=config["last_layer_dim"]
+        model_name=config["model_name"],
+        last_layer_dim=config["last_layer_dim"],
+        head_hidden_dim=config.get("head_hidden_dim", 128),
+        head_num_layers=config.get("head_num_layers", 1),
+        head_dropout=config.get("head_dropout", 0.2),
+        head_activation=config.get("head_activation", "relu"),
+        head_output_activation=config.get("head_output_activation", "relu"),
+        head_normalization=config.get("head_normalization", "none"),
     )
 
 

@@ -58,21 +58,88 @@ class TileCrop:
 class UnifiedModel(nn.Module):
     """Unified model class that can work with any timm backbone"""
 
-    def __init__(self, model_name: str, last_layer_dim: int, pretrained: bool = True):
+    def __init__(
+        self,
+        model_name: str,
+        last_layer_dim: int,
+        pretrained: bool = True,
+        head_hidden_dim: int = 128,
+        head_num_layers: int = 1,
+        head_dropout: float = 0.2,
+        head_activation: str = "relu",
+        head_output_activation: str = "relu",
+        head_normalization: str = "none",
+    ):
         super().__init__()
         self.model_name = model_name
 
         # 1. Feature Extractor (removes original head)
         self.backbone = timm.create_model(model_name, pretrained=pretrained, num_classes=0)
 
-        # 2. Regression Head
-        self.regressor = nn.Sequential(
-            nn.Linear(last_layer_dim, 128),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(128, 5),  # Predict 5 biomass targets
-            nn.ReLU(),  # Ensure non-negative output
+        # 2. Build Regression Head
+        self.regressor = self._build_regressor(
+            in_dim=last_layer_dim,
+            hidden_dim=head_hidden_dim,
+            num_layers=head_num_layers,
+            dropout=head_dropout,
+            activation=head_activation,
+            output_activation=head_output_activation,
+            normalization=head_normalization,
         )
+
+    def _get_activation(self, name: str) -> nn.Module:
+        """Returns activation module by name."""
+        activations = {
+            "relu": nn.ReLU(),
+            "gelu": nn.GELU(),
+            "silu": nn.SiLU(),
+            "leaky_relu": nn.LeakyReLU(0.1),
+            "softplus": nn.Softplus(),
+        }
+        return activations.get(name.lower(), nn.ReLU())
+
+    def _build_regressor(
+        self,
+        in_dim: int,
+        hidden_dim: int,
+        num_layers: int,
+        dropout: float,
+        activation: str,
+        output_activation: str,
+        normalization: str,
+    ) -> nn.Sequential:
+        """Builds the regression head with configurable architecture."""
+        layers = []
+
+        # Input dimension for first layer
+        current_dim = in_dim
+
+        # Hidden layers
+        for i in range(num_layers):
+            layers.append(nn.Linear(current_dim, hidden_dim))
+
+            # Normalization (before activation)
+            if normalization == "batch":
+                layers.append(nn.BatchNorm1d(hidden_dim))
+            elif normalization == "layer":
+                layers.append(nn.LayerNorm(hidden_dim))
+
+            # Activation
+            layers.append(self._get_activation(activation))
+
+            # Dropout
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+
+            current_dim = hidden_dim
+
+        # Output layer
+        layers.append(nn.Linear(current_dim, 5))  # 5 biomass targets
+
+        # Output activation (ensure non-negative)
+        layers.append(self._get_activation(output_activation))
+
+        return nn.Sequential(*layers)
 
     @staticmethod
     def get_transforms_static(model_name: str, image_size: int, crop_type: str = "center", crop_width: int = 1000):
