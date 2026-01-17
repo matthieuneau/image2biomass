@@ -463,6 +463,7 @@ def train(config=None):
                 },
             )
             artifact.add_file(best["model_path"])
+            artifact.add_file(best["backbone_path"])
             wandb.log_artifact(artifact)
 
         else:
@@ -521,6 +522,7 @@ def train(config=None):
                 },
             )
             model_artifact.add_file(result["model_path"])
+            model_artifact.add_file(result["backbone_path"])
             wandb.log_artifact(model_artifact)
 
 
