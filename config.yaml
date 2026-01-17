@@ -12,6 +12,14 @@ last_layer_dim: 192      # 1024 for vit_large_patch14_dinov2.lvd142m, 192 for vi
 image_size: 224
 augment: false          # Enable data augmentation (RandomResizedCrop, ColorJitter, TrivialAugmentWide)
 
+# Regressor head configuration
+head_hidden_dim: 128    # Hidden layer dimension (64, 128, 256, 512)
+head_num_layers: 1      # Number of hidden layers (1, 2, 3)
+head_dropout: 0.2       # Dropout rate (0.0 - 0.5)
+head_activation: relu   # Hidden layer activation (relu, gelu, silu, leaky_relu)
+head_output_activation: relu  # Output activation (relu, softplus)
+head_normalization: none      # Normalization type (none, batch, layer)
+
 crop_type: random      # "center" or "random" - how to crop the 2000px wide image
 crop_width: 500       # Width of crop in pixels (default 1000, max 2000)
 
